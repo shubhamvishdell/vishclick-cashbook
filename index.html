@@ -284,14 +284,12 @@
         cashOutButton.addEventListener('click', ()=>addEntry('out'));
 
         // PDF export with bar graph
-        exportPdfButton.addEventListener('click', () => {
+    exportPdfButton.addEventListener('click', () => {
     const originalEntries = allData[currentBookName] || [];
     if (!originalEntries || originalEntries.length === 0) return alert('No entries to export!');
 
-    // Chronological copy for correct running balance
     const entries = originalEntries.slice().sort((a,b) => new Date(a.date) - new Date(b.date));
 
-    // Compute running balances
     let running = 0;
     const rowsChron = entries.map(e => {
         running += (e.type === 'in') ? Number(e.amount || 0) : -Number(e.amount || 0);
@@ -305,67 +303,75 @@
         };
     });
 
-    // Reverse for newest-first display
     const rowsForPdf = rowsChron.slice().reverse();
 
-    // Totals
     let totalIn = 0, totalOut = 0;
     entries.forEach(e => { if (e.type==='in') totalIn+=Number(e.amount||0); else totalOut+=Number(e.amount||0); });
 
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
+    const doc = new jsPDF({unit:'mm', format:'a4'});
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 10;
+    let currentY = margin;
 
-    doc.setFont('helvetica');
+    // Header
+    doc.setFillColor(0, 38, 77); // navy blue
+    doc.rect(0, 0, pageWidth, 15, 'F');
     doc.setFontSize(16);
     doc.setTextColor(255,255,255);
-    // Book name on top, left-aligned, white on navy blue
-    doc.setFillColor(0, 38, 77); // navy blue
-    doc.rect(0, 0, 210, 12, 'F'); // full width header rectangle
-    doc.text(`VishClick : Design Studio`, 10, 8);
+    doc.setFont(undefined,'bold');
+    doc.text("VishClick : Design Studio", margin, 10);
 
-    // Subheading: book name, semi-bold, light violet background
-    doc.setFillColor(230, 230, 250); // light violet
-    doc.rect(0, 12, 210, 10, 'F');
-    doc.setTextColor(0);
+    // Book name section
+    currentY += 15;
+    doc.setFillColor(230,230,250); // light violet
+    doc.rect(0, currentY, pageWidth, 12, 'F');
     doc.setFontSize(12);
-    doc.setFont(undefined, 'bold');
-    doc.text(`Book: ${currentBookName}`, 10, 19);
+    doc.setTextColor(0);
+    doc.text(`Book: ${currentBookName}`, margin, currentY + 8);
+    currentY += 15;
 
-    // Totals section with highlight boxes
-    doc.setFontSize(11);
+    // Totals boxes
+    const boxHeight = 10, boxWidth = (pageWidth - 4*margin)/3;
     // Total In
-    doc.setFillColor(220, 255, 220); // light green
-    doc.rect(10, 24, 60, 8, 'F');
-    doc.setTextColor(0, 128, 0); // green text
-    doc.text(`Total In: ₹ ${totalIn.toFixed(2)}`, 12, 30);
+    doc.setFillColor(220,255,220);
+    doc.rect(margin, currentY, boxWidth, boxHeight, 'F');
+    doc.setTextColor(0,128,0);
+    doc.setFont(undefined,'bold');
+    doc.text(`Total In: ₹ ${totalIn.toFixed(2)}`, margin+2, currentY+7);
 
     // Total Out
-    doc.setFillColor(255, 220, 220); // light red
-    doc.rect(75, 24, 60, 8, 'F');
-    doc.setTextColor(220, 0, 0); // red text
-    doc.text(`Total Out: ₹ ${totalOut.toFixed(2)}`, 77, 30);
+    doc.setFillColor(255,220,220);
+    doc.rect(2*margin+boxWidth, currentY, boxWidth, boxHeight, 'F');
+    doc.setTextColor(220,0,0);
+    doc.text(`Total Out: ₹ ${totalOut.toFixed(2)}`, 2*margin+boxWidth+2, currentY+7);
 
     // Net Balance
-    doc.setFillColor(220, 220, 255); // light blue
-    doc.rect(140, 24, 60, 8, 'F');
-    doc.setTextColor(0, 0, 180); // dark blue
-    doc.text(`Net Balance: ₹ ${(totalIn - totalOut).toFixed(2)}`, 142, 30);
+    doc.setFillColor(220,220,255);
+    doc.rect(3*margin+2*boxWidth, currentY, boxWidth, boxHeight, 'F');
+    doc.setTextColor(75,0,130); // indigo
+    doc.text(`Net Balance: ₹ ${(totalIn - totalOut).toFixed(2)}`, 3*margin+2*boxWidth+2, currentY+7);
 
-    // Prepare table
-    const tableBody = rowsForPdf.map(r => [
-        r.date, r.remark, r.mode, r.cashIn, r.cashOut, r.balance
-    ]);
+    currentY += boxHeight + 5;
 
+    // Table
+    const tableBody = rowsForPdf.map(r => [r.date, r.remark, r.mode, r.cashIn, r.cashOut, r.balance]);
     doc.autoTable({
+        startY: currentY,
         head: [['Date', 'Remark', 'Mode', 'Cash In', 'Cash Out', 'Balance']],
         body: tableBody,
-        startY: 36,
-        styles: { fontSize: 9 },
-        headStyles: { fillColor: [240,240,240] },
+        margin: { left: margin, right: margin },
+        styles: { fontSize: 9, cellPadding: 3 },
+        headStyles: { fillColor: [200,200,200], textColor: 0, fontStyle:'bold' },
         columnStyles: {
-            3: { textColor: [0,128,0] }, // Cash In green
-            4: { textColor: [220,0,0] }  // Cash Out red
-        }
+            0: { cellWidth: 30 }, // Date
+            1: { cellWidth: 50 }, // Remark
+            2: { cellWidth: 20 }, // Mode
+            3: { cellWidth: 25, textColor:[0,128,0] }, // Cash In green
+            4: { cellWidth: 25, textColor:[220,0,0] }, // Cash Out red
+            5: { cellWidth: 25 }  // Balance
+        },
+        didDrawPage: function(data) { currentY = data.cursor.y; }
     });
 
     doc.save(`${currentBookName}-report.pdf`);
