@@ -15,8 +15,11 @@
         button { margin: 5px 0; padding: 10px 15px; cursor: pointer; border-radius: 8px; border: 1px solid #ccc; background-color: #f0f0f0; font-size: 14px; }
         button:hover { background-color: #e0e0e0; }
         input, select { box-sizing: border-box; padding: 10px; border-radius: 8px; border: 1px solid #ccc; width: 100%; margin-bottom: 10px; font-size: 14px; }
-        .book-item { display: flex; justify-content: space-between; align-items: center; padding: 15px; border: 1px solid #eee; margin-top: 8px; cursor: pointer; border-radius: 8px; }
+        .book-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 15px; border: 1px solid #eee; margin-top: 8px; border-radius: 8px; }
         .book-item:hover { background-color: #f9f9f9; }
+        .book-name { flex-grow: 1; cursor: pointer; }
+        .book-delete-btn { background-color: #ffeded; color: #dc3545; border: 1px solid #ffb8b8; padding: 6px 12px; font-size: 12px; margin-left: 15px; }
+        .book-delete-btn:hover { background-color: #dc3545; color: white; }
         .delete-btn { color: red; cursor: pointer; border: none; background: none; font-size: 1.1em; padding: 0 8px; }
         .cash-in { color: #28a745; font-weight: bold; }
         .cash-out { color: #dc3545; font-weight: bold; }
@@ -82,6 +85,7 @@
         const SCOPES = 'https://www.googleapis.com/auth/drive.file';
         const DATA_FILENAME = 'vishclick-cashbook-data.json';
 
+        // All DOM element references
         const gIdSignin = document.getElementById('g_id_signin');
         const appContainer = document.getElementById('app-container');
         const homeScreen = document.getElementById('homeScreen');
@@ -113,7 +117,7 @@
                 google.accounts.id.initialize({ client_id: CLIENT_ID, callback: handleCredentialResponse });
                 google.accounts.id.renderButton(gIdSignin, { theme: 'outline', size: 'large' });
                 tokenClient = google.accounts.oauth2.initTokenClient({ client_id: CLIENT_ID, scope: SCOPES, callback: handleTokenResponse });
-            } else { updateUiOnLogin(); }
+            }
         };
 
         function handleCredentialResponse(response) { 
@@ -130,7 +134,7 @@
             gapi.client.init({}).then(() => {
                 gapi.client.setToken(tokenResponse);
                 gapi.client.load('drive', 'v3', findDataFile);
-            }).catch(err=>{ console.warn(err); updateUiOnLogin(); });
+            }).catch(err => { console.warn(err); });
         }
         
         signoutButton.addEventListener('click', () => {
@@ -143,14 +147,14 @@
             gapi.client.drive.files.list({
                 q: `name='${DATA_FILENAME}' and trashed=false`, fields: 'files(id)', spaces: 'drive'
             }).then(res => {
-                if (res.result.files.length>0) { dataFileId = res.result.files[0].id; readFile(dataFileId); } 
+                if (res.result.files.length > 0) { dataFileId = res.result.files[0].id; readFile(dataFileId); } 
                 else { createFile(); }
             }).catch(() => { createFile(); });
         }
 
         function readFile(fileId) {
             gapi.client.drive.files.get({ fileId, alt: 'media' }).then(res => { allData = res.result || {}; updateUiOnLogin(); })
-            .catch(()=>{ allData = {}; updateUiOnLogin(); });
+            .catch(() => { allData = {}; updateUiOnLogin(); });
         }
         
         function createFile() {
@@ -173,154 +177,175 @@
         }
 
         function showScreen(screen) {
-            homeScreen.style.display = screen==='home'?'block':'none';
-            detailsScreen.style.display = screen==='details'?'block':'none';
+            homeScreen.style.display = screen === 'home' ? 'block' : 'none';
+            detailsScreen.style.display = screen === 'details' ? 'block' : 'none';
         }
 
         function showDetailsScreen(bookName) {
             currentBookName = bookName;
             bookTitle.textContent = bookName;
             const now = new Date();
-            dateInput.value = now.toISOString().slice(0,10);
-            timeInput.value = now.toTimeString().slice(0,5);
+            dateInput.value = now.toISOString().slice(0, 10);
+            timeInput.value = now.toTimeString().slice(0, 5);
             renderEntries();
             showScreen('details');
         }
 
-        backButton.addEventListener('click', ()=>showScreen('home'));
+        backButton.addEventListener('click', () => showScreen('home'));
         
         function updateUiOnLogin() {
-            gIdSignin.style.display='none';
-            signoutButton.style.display='block';
-            userInfo.style.display='block';
-            userInfo.textContent='Signed in';
-            appContainer.style.display='block';
+            gIdSignin.style.display = 'none';
+            signoutButton.style.display = 'block';
+            userInfo.style.display = 'block';
+            userInfo.textContent = 'Signed in';
+            appContainer.style.display = 'block';
             showScreen('home');
             renderBookList();
         }
 
         function updateUiOnLogout() {
-            gIdSignin.style.display='block';
-            signoutButton.style.display='none';
-            userInfo.style.display='none';
-            appContainer.style.display='none';
-            allData={}; dataFileId=null;
+            gIdSignin.style.display = 'block';
+            signoutButton.style.display = 'none';
+            userInfo.style.display = 'none';
+            appContainer.style.display = 'none';
+            allData = {}; dataFileId = null;
         }
         
+        // --- MODIFIED: Added Delete Button ---
         function renderBookList() {
-            bookList.innerHTML='';
-            Object.keys(allData).forEach(bookName=>{
-                const bookDiv=document.createElement('div');
-                bookDiv.className='book-item';
-                bookDiv.textContent=bookName;
-                bookDiv.addEventListener('click', ()=>showDetailsScreen(bookName));
+            bookList.innerHTML = '';
+            Object.keys(allData).forEach(bookName => {
+                const bookDiv = document.createElement('div');
+                bookDiv.className = 'book-item';
+                
+                // Span for the book name (clickable to open)
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = bookName;
+                nameSpan.className = 'book-name';
+                nameSpan.onclick = () => showDetailsScreen(bookName);
+                
+                // Button to delete the book
+                const deleteBtn = document.createElement('button');
+                deleteBtn.textContent = 'Delete';
+                deleteBtn.className = 'book-delete-btn';
+                deleteBtn.onclick = (e) => {
+                    e.stopPropagation(); // Prevents opening the book details
+                    deleteBook(bookName);
+                };
+                
+                bookDiv.appendChild(nameSpan);
+                bookDiv.appendChild(deleteBtn);
                 bookList.appendChild(bookDiv);
             });
         }
         
-        addBookForm.addEventListener('submit', e=>{
+        // --- NEW: Function to Delete a Book with Confirmation ---
+        function deleteBook(bookName) {
+            const confirmation = prompt(`This action cannot be undone.\nTo permanently delete the cashbook "${bookName}", please type its name below:`);
+            
+            if (confirmation === null) { // User clicked 'Cancel'
+                return;
+            }
+
+            if (confirmation.trim() === bookName) {
+                delete allData[bookName]; // Remove the book from data object
+                saveDataFile(); // Save the updated data to Google Drive
+                renderBookList(); // Refresh the list on the screen
+                alert(`Cashbook "${bookName}" has been deleted.`);
+            } else {
+                alert('The name you entered did not match. Deletion cancelled.');
+            }
+        }
+        
+        addBookForm.addEventListener('submit', e => {
             e.preventDefault();
-            const newBookName=newBookNameInput.value.trim();
-            if(newBookName && !allData[newBookName]){
-                allData[newBookName]=[];
-                newBookNameInput.value='';
+            const newBookName = newBookNameInput.value.trim();
+            if (newBookName && !allData[newBookName]) {
+                allData[newBookName] = [];
+                newBookNameInput.value = '';
                 renderBookList();
                 saveDataFile();
-            } else { alert('Book name exists or invalid'); }
+            } else { alert('Book name already exists or is invalid.'); }
         });
 
         function addEntry(type){
-            const amount=parseFloat(amountInput.value);
-            if(!currentBookName) return alert('Select a book first.');
-            if(isNaN(amount) || amount<=0) return alert('Enter valid amount.');
-            if(remarkInput.value.trim()==='') return alert('Enter remark.');
-            const dateVal=dateInput.value||new Date().toISOString().slice(0,10);
-            const timeVal=timeInput.value||new Date().toTimeString().slice(0,5);
-            const newEntry={ id: Date.now()+Math.floor(Math.random()*1000), date:`${dateVal} ${timeVal}`, remark:remarkInput.value.trim(), mode:modeInput.value, amount:Number(amount), type };
-            if(!allData[currentBookName]) allData[currentBookName]=[];
+            const amount = parseFloat(amountInput.value);
+            if (!currentBookName) return alert('Select a book first.');
+            if (isNaN(amount) || amount <= 0) return alert('Enter a valid amount.');
+            if (remarkInput.value.trim() === '') return alert('Enter details/remark.');
+            const dateVal = dateInput.value || new Date().toISOString().slice(0, 10);
+            const timeVal = timeInput.value || new Date().toTimeString().slice(0, 5);
+            const newEntry = { id: Date.now() + Math.random(), date: `${dateVal} ${timeVal}`, remark: remarkInput.value.trim(), mode: modeInput.value, amount: Number(amount), type };
+            if (!allData[currentBookName]) allData[currentBookName] = [];
             allData[currentBookName].push(newEntry);
             renderEntries();
             saveDataFile();
-            amountInput.value=''; remarkInput.value='';
+            amountInput.value = ''; remarkInput.value = '';
         }
 
         function renderEntries(){
-            if(!currentBookName) return;
-            const originalEntries=allData[currentBookName]||[];
-            const entries=originalEntries.slice().sort((a,b)=>new Date(a.date)-new Date(b.date));
-            let totalIn=0,totalOut=0;
-            const runningBalances=[];
-            let running=0;
-            entries.forEach(e=>{
-                if(e.type==='in') totalIn+=Number(e.amount||0);
-                else totalOut+=Number(e.amount||0);
-                running+=(e.type==='in'?Number(e.amount||0):-Number(e.amount||0));
+            if (!currentBookName) return;
+            const originalEntries = allData[currentBookName] || [];
+            const entries = originalEntries.slice().sort((a, b) => new Date(a.date) - new Date(b.date));
+            let totalIn = 0, totalOut = 0;
+            const runningBalances = [];
+            let running = 0;
+            entries.forEach(e => {
+                if (e.type === 'in') totalIn += Number(e.amount || 0);
+                else totalOut += Number(e.amount || 0);
+                running += (e.type === 'in' ? Number(e.amount || 0) : -Number(e.amount || 0));
                 runningBalances.push(running);
             });
 
-            entryList.innerHTML='';
-            for(let i=entries.length-1;i>=0;i--){
-                const e=entries[i];
-                const bal=runningBalances[i];
-                const row=entryList.insertRow();
-                row.insertCell(0).textContent=new Date(e.date).toLocaleString();
-                row.insertCell(1).textContent=e.remark;
-                row.insertCell(2).textContent=e.mode;
-                const ci=row.insertCell(3),co=row.insertCell(4);
-                if(e.type==='in'){ ci.textContent=Number(e.amount).toFixed(2); ci.className='cash-in'; co.textContent='-'; }
-                else{ co.textContent=Number(e.amount).toFixed(2); co.className='cash-out'; ci.textContent='-'; }
-                row.insertCell(5).textContent=bal.toFixed(2);
-                const del=row.insertCell(6);
-                const delBtn=document.createElement('button'); delBtn.textContent='X'; delBtn.className='delete-btn';
-                delBtn.onclick=()=>{ if(confirm('Delete?')){ const idx=allData[currentBookName].findIndex(x=>x.id===e.id); if(idx>-1){ allData[currentBookName].splice(idx,1); renderEntries(); saveDataFile(); } } };
+            entryList.innerHTML = '';
+            for(let i = entries.length - 1; i >= 0; i--) {
+                const e = entries[i];
+                const bal = runningBalances[i];
+                const row = entryList.insertRow();
+                row.insertCell(0).textContent = new Date(e.date).toLocaleString();
+                row.insertCell(1).textContent = e.remark;
+                row.insertCell(2).textContent = e.mode;
+                const ci = row.insertCell(3), co = row.insertCell(4);
+                if (e.type === 'in') { ci.textContent = Number(e.amount).toFixed(2); ci.className = 'cash-in'; co.textContent = '-'; }
+                else { co.textContent = Number(e.amount).toFixed(2); co.className = 'cash-out'; ci.textContent = '-'; }
+                row.insertCell(5).textContent = bal.toFixed(2);
+                const del = row.insertCell(6);
+                const delBtn = document.createElement('button'); delBtn.textContent = 'X'; delBtn.className = 'delete-btn';
+                delBtn.onclick = () => { if(confirm('Are you sure you want to delete this entry?')) { const idx = allData[currentBookName].findIndex(x => x.id === e.id); if(idx > -1) { allData[currentBookName].splice(idx, 1); renderEntries(); saveDataFile(); } } };
                 del.appendChild(delBtn);
             }
-            totalInDisplay.textContent=totalIn.toFixed(2);
-            totalOutDisplay.textContent=totalOut.toFixed(2);
-            netBalanceDisplay.textContent=(totalIn-totalOut).toFixed(2);
+            totalInDisplay.textContent = totalIn.toFixed(2);
+            totalOutDisplay.textContent = totalOut.toFixed(2);
+            netBalanceDisplay.textContent = (totalIn - totalOut).toFixed(2);
         }
 
-        cashInButton.addEventListener('click', ()=>addEntry('in'));
-        cashOutButton.addEventListener('click', ()=>addEntry('out'));
+        cashInButton.addEventListener('click', () => addEntry('in'));
+        cashOutButton.addEventListener('click', () => addEntry('out'));
 
-        // --- CORRECTED & IMPROVED PDF EXPORT ---
+        // --- CORRECTED PDF EXPORT ---
         exportPdfButton.addEventListener('click', () => {
             const originalEntries = allData[currentBookName] || [];
             if (!originalEntries || originalEntries.length === 0) {
                 return alert('No entries to export!');
             }
 
-            // 1. Sort entries chronologically (oldest first) to calculate running balance correctly.
             const entries = originalEntries.slice().sort((a, b) => new Date(a.date) - new Date(b.date));
 
-            // 2. Calculate running balance and totals in a single loop.
-            let running = 0;
-            let totalIn = 0;
-            let totalOut = 0;
-
+            let running = 0, totalIn = 0, totalOut = 0;
             const calculatedRows = entries.map(e => {
-                if (e.type === 'in') {
-                    totalIn += Number(e.amount || 0);
-                    running += Number(e.amount || 0);
-                } else {
-                    totalOut += Number(e.amount || 0);
-                    running -= Number(e.amount || 0);
-                }
+                if (e.type === 'in') { totalIn += Number(e.amount || 0); running += Number(e.amount || 0); } 
+                else { totalOut += Number(e.amount || 0); running -= Number(e.amount || 0); }
                 return {
-                    date: new Date(e.date).toLocaleString(),
-                    remark: e.remark,
-                    mode: e.mode,
+                    date: new Date(e.date).toLocaleString(), remark: e.remark, mode: e.mode,
                     cashIn: e.type === 'in' ? Number(e.amount).toFixed(2) : '-',
                     cashOut: e.type === 'out' ? Number(e.amount).toFixed(2) : '-',
                     balance: running.toFixed(2)
                 };
             });
 
-            // 3. Reverse the final array so the newest entries appear first in the PDF table.
             const rowsForPdf = calculatedRows.slice().reverse();
             const tableBody = rowsForPdf.map(r => [r.date, r.remark, r.mode, r.cashIn, r.cashOut, r.balance]);
 
-            // 4. Generate the PDF document.
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF('p', 'mm', 'a4');
             doc.setFont('helvetica');
@@ -328,67 +353,34 @@
             const pageWidth = doc.internal.pageSize.getWidth();
             const margin = 10;
 
-            // Header
-            doc.setFillColor(0, 38, 77); // Navy
-            doc.rect(0, 0, pageWidth, 12, 'F');
-            doc.setTextColor(255, 255, 255);
-            doc.setFontSize(16);
+            doc.setFillColor(0, 38, 77); doc.rect(0, 0, pageWidth, 12, 'F');
+            doc.setTextColor(255, 255, 255); doc.setFontSize(16);
             doc.text("VishClick : Design Studio", pageWidth / 2, 8, { align: 'center' });
 
-            // Book Name
-            doc.setFillColor(230, 230, 250);
-            doc.rect(0, 12, pageWidth, 10, 'F');
-            doc.setTextColor(0);
-            doc.setFontSize(12);
-            doc.setFont(undefined, 'bold');
+            doc.setFillColor(230, 230, 250); doc.rect(0, 12, pageWidth, 10, 'F');
+            doc.setTextColor(0); doc.setFontSize(12); doc.setFont(undefined, 'bold');
             doc.text(`Book: ${currentBookName}`, pageWidth / 2, 19, { align: 'center' });
 
-            // Totals Section
-            const totalWidth = 60;
-            const gap = 5;
-            const totalsY = 30;
-            const totalStartX = 20;
-
-            doc.setFontSize(9);
-            doc.setFont(undefined, 'bold');
+            const totalWidth = 60, gap = 5, totalsY = 30, totalStartX = 20;
+            doc.setFontSize(9); doc.setFont(undefined, 'bold');
+            doc.setFillColor(220, 255, 220); doc.rect(totalStartX, totalsY, totalWidth, 8, 'F');
+            doc.setTextColor(0, 128, 0); doc.text(`Total In: ${totalIn.toFixed(2)}`, totalStartX + 3, totalsY + 6);
+            doc.setFillColor(255, 220, 220); doc.rect(totalStartX + totalWidth + gap, totalsY, totalWidth, 8, 'F');
+            doc.setTextColor(220, 0, 0); doc.text(`Total Out: ${totalOut.toFixed(2)}`, totalStartX + totalWidth + gap + 3, totalsY + 6);
+            doc.setFillColor(220, 220, 255); doc.rect(totalStartX + (totalWidth + gap) * 2, totalsY, totalWidth, 8, 'F');
+            doc.setTextColor(75, 0, 130); doc.text(`Net Balance: ${(totalIn - totalOut).toFixed(2)}`, totalStartX + (totalWidth + gap) * 2 + 3, totalsY + 6);
             
-            doc.setFillColor(220, 255, 220);
-            doc.rect(totalStartX, totalsY, totalWidth, 8, 'F');
-            doc.setTextColor(0, 128, 0);
-            doc.text(`Total In: ${totalIn.toFixed(2)}`, totalStartX + 3, totalsY + 6);
-
-            doc.setFillColor(255, 220, 220);
-            doc.rect(totalStartX + totalWidth + gap, totalsY, totalWidth, 8, 'F');
-            doc.setTextColor(220, 0, 0);
-            doc.text(`Total Out: ${totalOut.toFixed(2)}`, totalStartX + totalWidth + gap + 3, totalsY + 6);
-
-            doc.setFillColor(220, 220, 255);
-            doc.rect(totalStartX + (totalWidth + gap) * 2, totalsY, totalWidth, 8, 'F');
-            doc.setTextColor(75, 0, 130);
-            doc.text(`Net Balance: ${(totalIn - totalOut).toFixed(2)}`, totalStartX + (totalWidth + gap) * 2 + 3, totalsY + 6);
-
-            // Table
-            const startY = totalsY + 14;
             doc.autoTable({
-                head: [['Date', 'Remark', 'Mode', 'Cash In', 'Cash Out', 'Balance']],
-                body: tableBody,
-                startY: startY,
-                margin: { left: margin, right: margin },
-                styles: { fontSize: 10, cellPadding: 3 },
-                headStyles: { fillColor: [200, 200, 200], halign: 'center' },
+                head: [['Date', 'Remark', 'Mode', 'Cash In', 'Cash Out', 'Balance']], body: tableBody,
+                startY: totalsY + 14, margin: { left: margin, right: margin }, styles: { fontSize: 9, cellPadding: 2.5 },
+                headStyles: { fillColor: [41, 128, 185], textColor: 255, halign: 'center' },
                 columnStyles: {
-                    0: { cellWidth: 35 },
-                    1: { cellWidth: 55 },
-                    2: { cellWidth: 25, halign: 'center' },
-                    3: { cellWidth: 25, halign: 'right', textColor: [0, 128, 0] },
-                    4: { cellWidth: 25, halign: 'right', textColor: [220, 0, 0] },
-                    5: { cellWidth: 25, halign: 'right' }
-                },
-                tableWidth: 'auto',
-                showHead: 'everyPage',
-                theme: 'grid'
+                    0: { cellWidth: 35 }, 1: { cellWidth: 'auto' }, 2: { cellWidth: 20, halign: 'center' },
+                    3: { cellWidth: 22, halign: 'right', textColor: [0, 128, 0] },
+                    4: { cellWidth: 22, halign: 'right', textColor: [220, 0, 0] },
+                    5: { cellWidth: 22, halign: 'right' }
+                }, theme: 'grid'
             });
-
             doc.save(`${currentBookName}-report.pdf`);
         });
     </script>
