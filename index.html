@@ -284,14 +284,21 @@
         cashOutButton.addEventListener('click', ()=>addEntry('out'));
 
         // PDF export with bar graph
-    exportPdfButton.addEventListener('click', () => {
+     exportPdfButton.addEventListener('click', () => {
+
     const originalEntries = allData[currentBookName] || [];
+
     if (!originalEntries || originalEntries.length === 0) return alert('No entries to export!');
+
+
 
     const entries = originalEntries.slice().sort((a,b) => new Date(b.date) - new Date(a.date));
 
 
+
+
     let running = 0;
+
     const calculatedRows = entries.map(e => {
     running += (e.type === 'in') ? Number(e.amount || 0) : -Number(e.amount || 0);
     return {
@@ -307,83 +314,163 @@
 // ✅ Reverse only after balance is correctly calculated
 const rows = calculatedRows.reverse();
 
+
+
+
     let totalIn = 0, totalOut = 0;
+
     entries.forEach(e => { if(e.type==='in') totalIn+=Number(e.amount||0); else totalOut+=Number(e.amount||0); });
 
+
+
     const { jsPDF } = window.jspdf;
+
     const doc = new jsPDF('p','mm','a4');
+
     doc.setFont('helvetica');
 
+
+
     const pageWidth = doc.internal.pageSize.getWidth();
+
     const margin = 10;
 
+
+
     // Header
+
     doc.setFillColor(0,38,77); // Navy
+
     doc.rect(0,0,pageWidth,12,'F');
+
     doc.setTextColor(255,255,255);
+
     doc.setFontSize(16);
+
     doc.text("VishClick : Design Studio", pageWidth/2, 8, { align: 'center' });
 
+
+
     // Book Name
+
     doc.setFillColor(230,230,250);
+
     doc.rect(0,12,pageWidth,10,'F');
+
     doc.setTextColor(0);
+
     doc.setFontSize(12);
+
     doc.setFont(undefined,'bold');
-    doc.text(`Book: ${currentBookName}`, pageWidth/2, 19, { align: 'center' });
+
+    doc.text(Book: ${currentBookName}, pageWidth/2, 19, { align: 'center' });
+
+
 
     // ====== Totals Section (clean + aligned + without rupee sign) ======
+
 const totalWidth = 60;
+
 const gap = 5;
+
 const totalsY = 30; // adjust as needed
+
 const totalStartX = 20;
 
+
+
 doc.setFontSize(9);
+
 doc.setFont(undefined, 'bold');
 
+
+
 // Total In
+
 doc.setFillColor(220, 255, 220); // light green background
+
 doc.rect(totalStartX, totalsY, totalWidth, 8, 'F');
+
 doc.setTextColor(0, 128, 0); // green text
-doc.text(`Total In: ${totalIn.toFixed(2)}`, totalStartX + 3, totalsY + 6); // left aligned
+
+doc.text(Total In: ${totalIn.toFixed(2)}, totalStartX + 3, totalsY + 6); // left aligned
+
+
 
 // Total Out
+
 doc.setFillColor(255, 220, 220); // light red background
+
 doc.rect(totalStartX + totalWidth + gap, totalsY, totalWidth, 8, 'F');
+
 doc.setTextColor(220, 0, 0); // red text
-doc.text(`Total Out: ${totalOut.toFixed(2)}`, totalStartX + totalWidth + gap + 3, totalsY + 6);
+
+doc.text(Total Out: ${totalOut.toFixed(2)}, totalStartX + totalWidth + gap + 3, totalsY + 6);
+
+
 
 // Net Balance
+
 doc.setFillColor(220, 220, 255); // light violet-blue background
+
 doc.rect(totalStartX + (totalWidth + gap) * 2, totalsY, totalWidth, 8, 'F');
+
 doc.setTextColor(75, 0, 130); // violet text
-doc.text(`Net Balance: ${(totalIn - totalOut).toFixed(2)}`, totalStartX + (totalWidth + gap) * 2 + 3, totalsY + 6);
+
+doc.text(Net Balance: ${(totalIn - totalOut).toFixed(2)}, totalStartX + (totalWidth + gap) * 2 + 3, totalsY + 6);
+
+
 
     // Table with auto page break
+
     const tableBody = rows.map(r => [r.date,r.remark,r.mode,r.cashIn,r.cashOut,r.balance]);
+
     const startY = totalsY + 14;
 
+
+
     doc.autoTable({
+
         head: [['Date','Remark','Mode','Cash In','Cash Out','Balance']],
+
         body: tableBody,
+
         startY: startY,
+
         margin: { left: margin, right: margin },
+
         styles: { fontSize: 10, cellPadding: 3 },
+
         headStyles: { fillColor: [200,200,200], halign: 'center' },
+
         columnStyles: {
+
             0: { cellWidth: 35 },
+
             1: { cellWidth: 55 },
+
             2: { cellWidth: 25, halign: 'center' },
+
             3: { cellWidth: 25, halign: 'right', textColor: [0,128,0] },
+
             4: { cellWidth: 25, halign: 'right', textColor: [220,0,0] },
+
             5: { cellWidth: 25, halign: 'right' }
+
         },
+
         tableWidth: 'auto',
+
         showHead: 'everyPage', // Head row on every page
+
         theme: 'grid'
+
     });
 
-    doc.save(`${currentBookName}-report.pdf`);
+
+
+    doc.save(${currentBookName}-report.pdf);
+
 });
     </script>
 </body>
