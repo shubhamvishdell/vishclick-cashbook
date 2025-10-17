@@ -288,78 +288,87 @@
     const originalEntries = allData[currentBookName] || [];
     if (!originalEntries || originalEntries.length === 0) return alert('No entries to export!');
 
-    // Sort chronological
+    // Chronological copy for correct running balance
     const entries = originalEntries.slice().sort((a,b) => new Date(a.date) - new Date(b.date));
 
-    // Running balances
+    // Compute running balances
     let running = 0;
-    const rowsForPdf = entries.map(e => {
-        running += e.type === 'in' ? Number(e.amount) : -Number(e.amount);
-        return [
-            new Date(e.date).toLocaleString(),
-            e.remark,
-            e.mode,
-            e.type === 'in' ? Number(e.amount).toFixed(2) : '-',
-            e.type === 'out' ? Number(e.amount).toFixed(2) : '-',
-            running.toFixed(2)
-        ];
-    }).reverse(); // newest first in PDF
+    const rowsChron = entries.map(e => {
+        running += (e.type === 'in') ? Number(e.amount || 0) : -Number(e.amount || 0);
+        return {
+            date: new Date(e.date).toLocaleString(),
+            remark: e.remark,
+            mode: e.mode,
+            cashIn: e.type === 'in' ? Number(e.amount).toFixed(2) : '-',
+            cashOut: e.type === 'out' ? Number(e.amount).toFixed(2) : '-',
+            balance: running.toFixed(2)
+        };
+    });
 
-    let totalIn = entries.reduce((sum,e)=>sum+(e.type==='in'?Number(e.amount):0),0);
-    let totalOut = entries.reduce((sum,e)=>sum+(e.type==='out'?Number(e.amount):0),0);
-    let netBalance = totalIn - totalOut;
+    // Reverse for newest-first display
+    const rowsForPdf = rowsChron.slice().reverse();
+
+    // Totals
+    let totalIn = 0, totalOut = 0;
+    entries.forEach(e => { if (e.type==='in') totalIn+=Number(e.amount||0); else totalOut+=Number(e.amount||0); });
 
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
 
-    // Book name left-aligned
+    doc.setFont('helvetica');
     doc.setFontSize(16);
     doc.setTextColor(255,255,255);
-    doc.setFillColor(0,0,128); // navy blue
-    doc.rect(0, 0, 210, 12, 'F'); // full width rectangle
-    doc.text(`VishClick : Design Studio`, 10, 9);
+    // Book name on top, left-aligned, white on navy blue
+    doc.setFillColor(0, 38, 77); // navy blue
+    doc.rect(0, 0, 210, 12, 'F'); // full width header rectangle
+    doc.text(`VishClick : Design Studio`, 10, 8);
 
-    // Subheading: Book Name
-    doc.setFontSize(12);
+    // Subheading: book name, semi-bold, light violet background
+    doc.setFillColor(230, 230, 250); // light violet
+    doc.rect(0, 12, 210, 10, 'F');
     doc.setTextColor(0);
-    doc.setFillColor(230,230,250); // light violet
-    doc.rect(0, 14, 210, 10, 'F');
-    doc.text(`Cashbook: ${currentBookName}`, 10, 22);
+    doc.setFontSize(12);
+    doc.setFont(undefined, 'bold');
+    doc.text(`Book: ${currentBookName}`, 10, 19);
 
-    // Totals highlight boxes
-    const boxY = 26;
+    // Totals section with highlight boxes
     doc.setFontSize(11);
-
     // Total In
-    doc.setFillColor(198, 239, 206); // green-ish
-    doc.rect(10, boxY, 60, 8, 'F');
-    doc.setTextColor(0,128,0);
-    doc.text(`Total In: ₹${totalIn.toFixed(2)}`, 12, boxY+6);
+    doc.setFillColor(220, 255, 220); // light green
+    doc.rect(10, 24, 60, 8, 'F');
+    doc.setTextColor(0, 128, 0); // green text
+    doc.text(`Total In: ₹ ${totalIn.toFixed(2)}`, 12, 30);
 
     // Total Out
-    doc.setFillColor(255, 199, 206); // red-ish
-    doc.rect(75, boxY, 60, 8, 'F');
-    doc.setTextColor(220,0,0);
-    doc.text(`Total Out: ₹${totalOut.toFixed(2)}`, 77, boxY+6);
+    doc.setFillColor(255, 220, 220); // light red
+    doc.rect(75, 24, 60, 8, 'F');
+    doc.setTextColor(220, 0, 0); // red text
+    doc.text(`Total Out: ₹ ${totalOut.toFixed(2)}`, 77, 30);
 
     // Net Balance
-    doc.setFillColor(255, 235, 156); // yellow-ish
-    doc.rect(140, boxY, 60, 8, 'F');
-    doc.setTextColor(128,64,0);
-    doc.text(`Net Balance: ₹${netBalance.toFixed(2)}`, 142, boxY+6);
+    doc.setFillColor(220, 220, 255); // light blue
+    doc.rect(140, 24, 60, 8, 'F');
+    doc.setTextColor(0, 0, 180); // dark blue
+    doc.text(`Net Balance: ₹ ${(totalIn - totalOut).toFixed(2)}`, 142, 30);
 
-    // Table
+    // Prepare table
+    const tableBody = rowsForPdf.map(r => [
+        r.date, r.remark, r.mode, r.cashIn, r.cashOut, r.balance
+    ]);
+
     doc.autoTable({
-        startY: boxY + 12,
-        head: [['Date','Remark','Mode','Cash In','Cash Out','Balance']],
-        body: rowsForPdf,
-        theme: 'grid',
-        headStyles:{fillColor:[240,240,240], textColor:0},
-        alternateRowStyles:{fillColor:[245,245,245]},
-        styles:{fontSize:9}
+        head: [['Date', 'Remark', 'Mode', 'Cash In', 'Cash Out', 'Balance']],
+        body: tableBody,
+        startY: 36,
+        styles: { fontSize: 9 },
+        headStyles: { fillColor: [240,240,240] },
+        columnStyles: {
+            3: { textColor: [0,128,0] }, // Cash In green
+            4: { textColor: [220,0,0] }  // Cash Out red
+        }
     });
 
-    doc.save(`${currentBookName}_Cashbook.pdf`);
+    doc.save(`${currentBookName}-report.pdf`);
 });
     </script>
 </body>
