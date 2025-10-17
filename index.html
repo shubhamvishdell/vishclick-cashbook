@@ -283,6 +283,7 @@
         cashInButton.addEventListener('click', ()=>addEntry('in'));
         cashOutButton.addEventListener('click', ()=>addEntry('out'));
 
+        // PDF export with bar graph
         exportPdfButton.addEventListener('click', () => {
     const originalEntries = allData[currentBookName] || [];
     if (!originalEntries || originalEntries.length === 0) return alert('No entries to export!');
@@ -369,7 +370,7 @@
 
     doc.save(`${currentBookName}-report.pdf`);
 });
- </script>
+    </script>
 </body>
 </html>
 
