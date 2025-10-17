@@ -77,7 +77,7 @@
         </div>
     </div>
 
-    <script>
+<script>
 const CLIENT_ID = '276544229541-udlegtaa830stnsksmlspovakis9m337.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 const DATA_FILENAME = 'vishclick-cashbook-data.json';
@@ -108,98 +108,90 @@ const exportPdfButton = document.getElementById('exportPdfButton');
 
 let tokenClient, allData = {}, dataFileId = null, currentBookName = null;
 
-window.onload = function() {
-    if (window.google && google.accounts && google.accounts.id) {
-        google.accounts.id.initialize({ client_id: CLIENT_ID, callback: handleCredentialResponse });
-        google.accounts.id.renderButton(gIdSignin, { theme: 'outline', size: 'large' });
-        tokenClient = google.accounts.oauth2.initTokenClient({ client_id: CLIENT_ID, scope: SCOPES, callback: handleTokenResponse });
-    } else { updateUiOnLogin(); }
-};
-
-function handleCredentialResponse(response) { 
-    if (tokenClient) tokenClient.requestAccessToken(); 
-}
-
-function handleTokenResponse(tokenResponse) {
-    if (tokenResponse && tokenResponse.access_token) {
-        gapi.load('client', () => initGapiClient(tokenResponse));
+// Trash structure: allData.trash[bookName] = {entries..., deletedAt: timestamp}
+function purgeOldTrash(){
+    const now = Date.now();
+    if(allData.trash){
+        Object.keys(allData.trash).forEach(book=>{
+            if(now - allData.trash[book].deletedAt > 7*24*60*60*1000){
+                delete allData.trash[book];
+            }
+        });
     }
 }
 
-function initGapiClient(tokenResponse) {
-    gapi.client.init({}).then(() => {
+window.onload = function() {
+    if(window.google && google.accounts && google.accounts.id){
+        google.accounts.id.initialize({ client_id: CLIENT_ID, callback: handleCredentialResponse });
+        google.accounts.id.renderButton(gIdSignin,{ theme:'outline', size:'large' });
+        tokenClient = google.accounts.oauth2.initTokenClient({ client_id: CLIENT_ID, scope: SCOPES, callback: handleTokenResponse });
+    } else { updateUiOnLogin(); }
+    purgeOldTrash();
+};
+
+function handleCredentialResponse(response){ if(tokenClient) tokenClient.requestAccessToken(); }
+function handleTokenResponse(tokenResponse){ if(tokenResponse && tokenResponse.access_token) gapi.load('client',()=>initGapiClient(tokenResponse)); }
+
+function initGapiClient(tokenResponse){
+    gapi.client.init({}).then(()=>{
         gapi.client.setToken(tokenResponse);
-        gapi.client.load('drive', 'v3', findDataFile);
+        gapi.client.load('drive','v3',findDataFile);
     }).catch(err=>{ console.warn(err); updateUiOnLogin(); });
 }
 
-signoutButton.addEventListener('click', () => {
-    if (dataFileId) saveDataFile(); 
-    if (google && google.accounts && google.accounts.id) google.accounts.id.disableAutoSelect();
+signoutButton.addEventListener('click', ()=>{
+    if(dataFileId) saveDataFile();
+    if(google && google.accounts && google.accounts.id) google.accounts.id.disableAutoSelect();
     updateUiOnLogout();
 });
 
-function findDataFile() {
+function findDataFile(){
     gapi.client.drive.files.list({
-        q: `name='${DATA_FILENAME}' and trashed=false`, fields: 'files(id)', spaces: 'drive'
-    }).then(res => {
-        if (res.result.files.length>0) { dataFileId = res.result.files[0].id; readFile(dataFileId); } 
+        q:`name='${DATA_FILENAME}' and trashed=false`, fields:'files(id)', spaces:'drive'
+    }).then(res=>{
+        if(res.result.files.length>0){ dataFileId = res.result.files[0].id; readFile(dataFileId); }
         else { createFile(); }
-    }).catch(() => { createFile(); });
+    }).catch(()=>{ createFile(); });
 }
 
-function readFile(fileId) {
-    gapi.client.drive.files.get({ fileId, alt: 'media' }).then(res => { allData = res.result || {}; updateUiOnLogin(); })
-    .catch(()=>{ allData = {}; updateUiOnLogin(); });
+function readFile(fileId){
+    gapi.client.drive.files.get({ fileId, alt:'media' }).then(res=>{
+        allData = res.result || {};
+        if(!allData.trash) allData.trash={};
+        updateUiOnLogin();
+    }).catch(()=>{ allData={}; updateUiOnLogin(); });
 }
 
-function createFile() {
-    gapi.client.drive.files.create({ resource: { name: DATA_FILENAME, mimeType: 'application/json' }, fields: 'id' })
-    .then(res => { dataFileId = res.result.id; allData={}; saveDataFile(); updateUiOnLogin(); });
+function createFile(){
+    gapi.client.drive.files.create({ resource:{ name:DATA_FILENAME, mimeType:'application/json' }, fields:'id' })
+    .then(res=>{ dataFileId=res.result.id; allData={}; saveDataFile(); updateUiOnLogin(); });
 }
 
-async function saveDataFile() {
-    if (!dataFileId) return;
+async function saveDataFile(){
+    if(!dataFileId) return;
     const content = JSON.stringify(allData);
-    const blob = new Blob([content], { type: 'application/json' });
+    const blob = new Blob([content], { type:'application/json' });
     const form = new FormData();
-    form.append('metadata', new Blob([JSON.stringify({ mimeType: 'application/json' })], { type: 'application/json' }));
+    form.append('metadata', new Blob([JSON.stringify({ mimeType:'application/json' })],{ type:'application/json' }));
     form.append('file', blob);
-    await fetch(`https://www.googleapis.com/upload/drive/v3/files/${dataFileId}?uploadType=multipart`, {
-        method: 'PATCH',
-        headers: { 'Authorization': `Bearer ${gapi.client.getToken().access_token}` },
+    await fetch(`https://www.googleapis.com/upload/drive/v3/files/${dataFileId}?uploadType=multipart`,{
+        method:'PATCH',
+        headers:{ 'Authorization': `Bearer ${gapi.client.getToken().access_token}` },
         body: form
     });
 }
 
-function showScreen(screen) {
-    homeScreen.style.display = screen==='home'?'block':'none';
-    detailsScreen.style.display = screen==='details'?'block':'none';
-}
-
-function showDetailsScreen(bookName) {
-    currentBookName = bookName;
-    bookTitle.textContent = bookName;
-    const now = new Date();
-    dateInput.value = now.toISOString().slice(0,10);
-    timeInput.value = now.toTimeString().slice(0,5);
-    renderEntries();
-    showScreen('details');
-}
-
-backButton.addEventListener('click', ()=>showScreen('home'));
-
-function updateUiOnLogin() {
+function updateUiOnLogin(){
     gIdSignin.style.display='none';
     signoutButton.style.display='block';
     userInfo.style.display='block';
     userInfo.textContent='Signed in';
     appContainer.style.display='block';
-    showScreen('home');
     renderBookList();
+    showScreen('home');
 }
 
-function updateUiOnLogout() {
+function updateUiOnLogout(){
     gIdSignin.style.display='block';
     signoutButton.style.display='none';
     userInfo.style.display='none';
@@ -207,166 +199,127 @@ function updateUiOnLogout() {
     allData={}; dataFileId=null;
 }
 
-// ====== Book & Trash Management ======
-function renderBookList() {
-    bookList.innerHTML = '';
-    const activeBooks = Object.keys(allData).filter(name => !allData[name].trashed);
-    const trashedBooks = Object.keys(allData).filter(name => allData[name].trashed);
-
-    activeBooks.forEach(bookName => {
-        const bookDiv = document.createElement('div');
-        bookDiv.className = 'book-item';
-        bookDiv.textContent = bookName;
-
-        const btnContainer = document.createElement('div');
-        const delBtn = document.createElement('button');
-        delBtn.textContent = 'Trash';
-        delBtn.style.marginLeft = '8px';
-        delBtn.onclick = () => deleteBook(bookName);
-        btnContainer.appendChild(delBtn);
-
-        bookDiv.appendChild(btnContainer);
-        bookDiv.addEventListener('click', () => showDetailsScreen(bookName));
-        bookList.appendChild(bookDiv);
-    });
-
-    // Show trashed books separately
-    if (trashedBooks.length > 0) {
-        const trashHeader = document.createElement('h4');
-        trashHeader.textContent = 'Trashed Books (can restore within 7 days)';
-        trashHeader.style.marginTop = '20px';
-        bookList.append
-Child(trashHeader);
-
-        trashedBooks.forEach(bookName => {
-            const bookDiv = document.createElement('div');
-            bookDiv.className = 'book-item';
-            bookDiv.style.opacity = '0.6';
-            bookDiv.textContent = bookName;
-
-            const btnContainer = document.createElement('div');
-            const restoreBtn = document.createElement('button');
-            restoreBtn.textContent = 'Restore';
-            restoreBtn.style.marginLeft = '8px';
-            restoreBtn.onclick = () => restoreBook(bookName);
-            btnContainer.appendChild(restoreBtn);
-
-            bookDiv.appendChild(btnContainer);
-            bookList.appendChild(bookDiv);
-        });
-    }
+function showScreen(screen){
+    homeScreen.style.display = screen==='home'?'block':'none';
+    detailsScreen.style.display = screen==='details'?'block':'none';
 }
 
-addBookForm.addEventListener('submit', e => {
+function renderBookList(){
+    bookList.innerHTML='';
+    Object.keys(allData).forEach(book=>{
+        if(book==='trash') return;
+        const bookDiv=document.createElement('div');
+        bookDiv.className='book-item';
+        bookDiv.textContent=book;
+        bookDiv.addEventListener('click',()=>showDetailsScreen(book));
+        const delBtn=document.createElement('button');
+        delBtn.textContent='Delete';
+        delBtn.className='delete-btn';
+        delBtn.onclick=(e)=>{
+            e.stopPropagation();
+            if(confirm(`Delete book "${book}"?`)){
+                if(!allData.trash) allData.trash={};
+                allData.trash[book]={data: allData[book], deletedAt: Date.now()};
+                delete allData[book];
+                saveDataFile();
+renderBookList();
+}
+};
+bookDiv.appendChild(delBtn);
+bookList.appendChild(bookDiv);
+});
+}
+}
+addBookForm.addEventListener('submit', e=>{
     e.preventDefault();
     const name = newBookNameInput.value.trim();
-    if (!name) return alert('Book name required');
-    if (allData[name] && !allData[name].trashed) return alert('Book already exists');
-    allData[name] = { entries: [], trashed: false, trashTime: null };
-    saveDataFile(); newBookNameInput.value = '';
+    if(!name) return alert('Enter book name');
+    if(allData[name]) return alert('Book already exists');
+    allData[name]={entries:[]};
+    newBookNameInput.value='';
+    saveDataFile();
     renderBookList();
 });
 
-function deleteBook(name) {
-    if (!confirm(`Are you sure you want to move "${name}" to Trash?`)) return;
-    allData[name].trashed = true;
-    allData[name].trashTime = new Date().getTime();
-    saveDataFile(); renderBookList();
+function showDetailsScreen(bookName){
+    currentBookName=bookName;
+    bookTitle.textContent=bookName;
+    showScreen('details');
+    renderEntries();
 }
 
-function restoreBook(name) {
-    allData[name].trashed = false;
-    allData[name].trashTime = null;
-    saveDataFile(); renderBookList();
-}
+backButton.addEventListener('click', ()=>{
+    currentBookName=null;
+    showScreen('home');
+    renderBookList();
+});
 
-// ====== Entries ======
-function renderEntries() {
-    if (!currentBookName) return;
-    const book = allData[currentBookName];
-    entryList.innerHTML = '';
-    let totalIn=0, totalOut=0, balance=0;
-
-    book.entries.forEach(entry => {
-        if (entry.trashed) return;
-        balance += entry.type==='in'?entry.amount:-entry.amount;
-        if (entry.type==='in') totalIn+=entry.amount; else totalOut+=entry.amount;
-
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td>${entry.date} ${entry.time}</td>
-            <td>${entry.remark}</td>
-            <td>${entry.mode}</td>
-            <td class="cash-in">${entry.type==='in'?entry.amount.toFixed(2):''}</td>
-            <td class="cash-out">${entry.type==='out'?entry.amount.toFixed(2):''}</td>
-            <td>${balance.toFixed(2)}</td>
-            <td><button class="delete-btn" onclick="trashEntry('${entry.id}')">Trash</button></td>
-        `;
-        entryList.appendChild(tr);
-    });
-
-    totalInDisplay.textContent = totalIn.toFixed(2);
-    totalOutDisplay.textContent = totalOut.toFixed(2);
-    netBalanceDisplay.textContent = (totalIn-totalOut).toFixed(2);
-}
-
-function generateId() {
-    return 'id-' + Math.random().toString(36).substr(2,9);
-}
-
-function addEntry(type) {
-    if (!currentBookName) return;
-    const date = dateInput.value;
-    const time = timeInput.value;
+function addEntry(type){
+    if(!currentBookName) return;
+    const date = dateInput.value || new Date().toISOString().split('T')[0];
+    const time = timeInput.value || new Date().toTimeString().split(' ')[0].substr(0,5);
     const mode = modeInput.value;
     const amount = parseFloat(amountInput.value);
     const remark = remarkInput.value.trim();
-    if (!amount || !remark || !date || !time) return alert('Fill all fields');
-    const entry = { id: generateId(), date, time, mode, amount, remark, type, trashed: false, trashTime: null };
+    if(isNaN(amount) || !remark) return alert('Enter valid amount and remark');
+    const entry={date,time,mode,amount,type, balance:0};
     allData[currentBookName].entries.push(entry);
-    saveDataFile(); amountInput.value=''; remarkInput.value=''; renderEntries();
+    dateInput.value=timeInput.value=amountInput.value=remarkInput.value='';
+    saveDataFile();
+    renderEntries();
 }
 
 cashInButton.addEventListener('click', ()=>addEntry('in'));
 cashOutButton.addEventListener('click', ()=>addEntry('out'));
 
-function trashEntry(id) {
-    if (!confirm('Move this entry to Trash?')) return;
-    const book = allData[currentBookName];
-    const entry = book.entries.find(e=>e.id===id);
-    if(entry) { entry.trashed = true; entry.trashTime = new Date().getTime(); saveDataFile(); renderEntries(); }
-}
-
-// ====== Auto purge trash older than 7 days ======
-function purgeOldTrash() {
-    const now = new Date().getTime();
-    for (const bookName in allData) {
-        const book = allData[bookName];
-        if (book.trashed && book.trashTime && now - book.trashTime > 7*24*60*60*1000) delete allData[bookName];
-        if (book.entries) {
-            book.entries = book.entries.filter(e => !(e.trashed && e.trashTime && now - e.trashTime > 7*24*60*60*1000));
-        }
-    }
-    saveDataFile(); renderBookList(); if(currentBookName) renderEntries();
-}
-
-// Call auto purge on load
-purgeOldTrash();
-
-// ====== PDF Export ======
-exportPdfButton.addEventListener('click', ()=>{
+function renderEntries(){
     if(!currentBookName) return;
+    const entries = allData[currentBookName].entries || [];
+    let balance=0, totalIn=0, totalOut=0;
+    entryList.innerHTML='';
+    entries.forEach((e,index)=>{
+        balance += (e.type==='in'?e.amount:-e.amount);
+        totalIn += (e.type==='in'?e.amount:0);
+        totalOut += (e.type==='out'?e.amount:0);
+        e.balance=balance;
+        const tr=document.createElement('tr');
+        tr.innerHTML=`<td>${e.date} ${e.time}</td>
+            <td>${e.remark}</td>
+            <td>${e.mode}</td>
+            <td class="cash-in">${e.type==='in'?e.amount.toFixed(2):''}</td>
+            <td class="cash-out">${e.type==='out'?e.amount.toFixed(2):''}</td>
+            <td>${balance.toFixed(2)}</td>
+            <td><button class="delete-btn">Delete</button></td>`;
+        tr.querySelector('button').onclick=()=>{
+            if(confirm('Delete this entry?')){
+                entries.splice(index,1);
+                saveDataFile();
+                renderEntries();
+            }
+        };
+        entryList.appendChild(tr);
+    });
+    totalInDisplay.textContent=totalIn.toFixed(2);
+    totalOutDisplay.textContent=totalOut.toFixed(2);
+    netBalanceDisplay.textContent=balance.toFixed(2);
+}
+
+exportPdfButton.addEventListener('click', ()=>{
+    if(!currentBookName) return alert('No book selected');
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
-    doc.setFontSize(18); doc.text(currentBookName, 14, 22);
-    const book = allData[currentBookName];
-    const rows = book.entries.filter(e=>!e.trashed).map(e=>[
-        `${e.date} ${e.time}`, e.remark, e.mode,
-        e.type==='in'?e.amount.toFixed(2):'', e.type==='out'?e.amount.toFixed(2):''
+    doc.setFontSize(18);
+    doc.text(currentBookName,14,20);
+    const tableData = (allData[currentBookName].entries || []).map(e=>[
+        e.date+' '+e.time,e.remark,e.mode,
+        e.type==='in'?e.amount.toFixed(2):'',
+        e.type==='out'?e.amount.toFixed(2):'',
+        e.balance.toFixed(2)
     ]);
-    doc.autoTable({ head: [['Date','Remark','Mode','Cash In','Cash Out']], body: rows, startY:30 });
+    doc.autoTable({ head:[['Date','Remark','Mode','Cash In','Cash Out','Balance']], body:tableData, startY:30 });
     doc.save(`${currentBookName}.pdf`);
 });
-    </script>
+</script>
 </body>
 </html>
+
