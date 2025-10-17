@@ -288,7 +288,8 @@
     const originalEntries = allData[currentBookName] || [];
     if (!originalEntries || originalEntries.length === 0) return alert('No entries to export!');
 
-    const entries = originalEntries.slice().sort((a,b) => new Date(a.date) - new Date(b.date));
+    const entries = originalEntries.slice().sort((a,b) => new Date(b.date) - new Date(a.date));
+
 
     let running = 0;
     const rows = entries.map(e => {
