@@ -1,90 +1,83 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<title>VishClick : Design Studio</title>
-<script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="https://apis.google.com/js/api.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
-<style>
-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 10px; max-width: 900px; margin: auto; color: #333; }
-.auth-section { margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; min-height: 40px; }
-#app-container { display: none; }
-#user-info { font-weight: bold; }
-button { margin: 5px 0; padding: 10px 15px; cursor: pointer; border-radius: 8px; border: 1px solid #ccc; background-color: #f0f0f0; font-size: 14px; }
-button:hover { background-color: #e0e0e0; }
-input, select { box-sizing: border-box; padding: 10px; border-radius: 8px; border: 1px solid #ccc; width: 100%; margin-bottom: 10px; font-size: 14px; }
-.book-item { display: flex; justify-content: space-between; align-items: center; padding: 15px; border: 1px solid #eee; margin-top: 8px; cursor: pointer; border-radius: 8px; }
-.book-item:hover { background-color: #f9f9f9; }
-.delete-btn { color: red; cursor: pointer; border: none; background: none; font-size: 1.1em; padding: 0 8px; }
-.restore-btn { color: green; cursor: pointer; border: none; background: none; font-size: 1em; padding: 0 5px; }
-.cash-in { color: #28a745; font-weight: bold; }
-.cash-out { color: #dc3545; font-weight: bold; }
-#summary { border: 1px solid #ccc; padding: 15px; margin-bottom: 10px; border-radius: 8px; background-color: #fafafa; display: flex; justify-content: space-between; }
-table { border-collapse: collapse; width: 100%; margin-top: 15px; }
-th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
-th { background-color: #f2f2f2; }
-#trashSection { margin-top: 20px; }
-</style>
+    <meta charset="utf-8" />
+    <title>VishClick : Design Studio</title>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://apis.google.com/js/api.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 10px; max-width: 900px; margin: auto; color: #333; }
+        .auth-section { margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; min-height: 40px; }
+        #app-container { display: none; }
+        #user-info { font-weight: bold; }
+        button { margin: 5px 0; padding: 10px 15px; cursor: pointer; border-radius: 8px; border: 1px solid #ccc; background-color: #f0f0f0; font-size: 14px; }
+        button:hover { background-color: #e0e0e0; }
+        input, select { box-sizing: border-box; padding: 10px; border-radius: 8px; border: 1px solid #ccc; width: 100%; margin-bottom: 10px; font-size: 14px; }
+        .book-item { display: flex; justify-content: space-between; align-items: center; padding: 15px; border: 1px solid #eee; margin-top: 8px; cursor: pointer; border-radius: 8px; }
+        .book-item:hover { background-color: #f9f9f9; }
+        .delete-btn { color: red; cursor: pointer; border: none; background: none; font-size: 1.1em; padding: 0 8px; }
+        .cash-in { color: #28a745; font-weight: bold; }
+        .cash-out { color: #dc3545; font-weight: bold; }
+        #summary { border: 1px solid #ccc; padding: 15px; margin-bottom: 10px; border-radius: 8px; background-color: #fafafa; display: flex; justify-content: space-between; }
+        table { border-collapse: collapse; width: 100%; margin-top: 15px; }
+        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+        th { background-color: #f2f2f2; }
+    </style>
 </head>
 <body>
-<h2 style="text-align: center; background-color: navy; color: white; padding: 10px;"><strong>VishClick : Design Studio</strong></h2>
+    <h2 style="text-align: center; background-color: navy; color: white; padding: 10px;"><strong>VishClick : Design Studio</strong></h2>
 
-<div class="auth-section">
-    <div id="g_id_signin"></div>
-    <div id="user-info" style="display: none;"></div>
-    <button id="signout_button" style="display: none;">Sign Out</button>
-</div>
-<hr>
+    <div class="auth-section">
+        <div id="g_id_signin"></div>
+        <div id="user-info" style="display: none;"></div>
+        <button id="signout_button" style="display: none;">Sign Out</button>
+    </div>
+    <hr>
 
-<div id="app-container">
-    <div id="homeScreen">
-        <h3>My Cashbooks</h3>
-        <form id="addBookForm">
-            <input type="text" id="newBookName" placeholder="New cashbook name" required>
-            <button type="submit">Add New Book</button>
-        </form>
-        <div id="bookList"></div>
+    <div id="app-container">
+        <div id="homeScreen">
+            <h3>My Cashbooks</h3>
+            <form id="addBookForm">
+                <input type="text" id="newBookName" placeholder="New cashbook name" required>
+                <button type="submit">Add New Book</button>
+            </form>
+            <div id="bookList"></div>
+        </div>
 
-        <div id="trashSection">
-            <h3>Trash (7 Days Restore)</h3>
-            <div id="trashList"></div>
+        <div id="detailsScreen" style="display: none;">
+            <button id="backButton">&larr; Back to Home</button>
+            <h2 id="bookTitle" style="background-color: #e6e6fa; padding: 8px;"></h2>
+            <h3>Add New Entry</h3>
+            <form id="entryForm" onsubmit="return false;">
+                <input type="date" id="dateInput"> <input type="time" id="timeInput">
+                <select id="modeInput">
+                    <option value="Cash">Cash</option> <option value="Online">Online</option>
+                </select>
+                <input type="number" id="amountInput" placeholder="Amount (₹)" required>
+                <input type="text" id="remarkInput" placeholder="Enter details" required>
+                <button type="button" id="cashInButton">CASH IN</button>
+                <button type="button" id="cashOutButton">CASH OUT</button>
+            </form>
+            <hr>
+            <div id="summary">
+                <div>Total In (+): <strong id="totalInDisplay" class="cash-in">0.00</strong></div>
+                <div>Total Out (-): <strong id="totalOutDisplay" class="cash-out">0.00</strong></div>
+                <div>Net Balance: <strong id="netBalanceDisplay">0.00</strong></div>
+            </div>
+            <button type="button" id="exportPdfButton">Export Report as PDF</button>
+            <h3>Entries</h3>
+            <table>
+                <thead>
+                    <tr><th>Date</th><th>Remark</th><th>Mode</th><th>Cash In</th><th>Cash Out</th><th>Balance</th><th></th></tr>
+                </thead>
+                <tbody id="entryList"></tbody>
+            </table>
         </div>
     </div>
 
-    <div id="detailsScreen" style="display: none;">
-        <button id="backButton">&larr; Back to Home</button>
-        <h2 id="bookTitle" style="background-color: #e6e6fa; padding: 8px;"></h2>
-        <h3>Add New Entry</h3>
-        <form id="entryForm" onsubmit="return false;">
-            <input type="date" id="dateInput"> <input type="time" id="timeInput">
-            <select id="modeInput">
-                <option value="Cash">Cash</option> <option value="Online">Online</option>
-            </select>
-            <input type="number" id="amountInput" placeholder="Amount (₹)" required>
-            <input type="text" id="remarkInput" placeholder="Enter details" required>
-            <button type="button" id="cashInButton">CASH IN</button>
-            <button type="button" id="cashOutButton">CASH OUT</button>
-        </form>
-        <hr>
-        <div id="summary">
-            <div>Total In (+): <strong id="totalInDisplay" class="cash-in">0.00</strong></div>
-            <div>Total Out (-): <strong id="totalOutDisplay" class="cash-out">0.00</strong></div>
-            <div>Net Balance: <strong id="netBalanceDisplay">0.00</strong></div>
-        </div>
-        <button type="button" id="exportPdfButton">Export Report as PDF</button>
-        <h3>Entries</h3>
-        <table>
-            <thead>
-                <tr><th>Date</th><th>Remark</th><th>Mode</th><th>Cash In</th><th>Cash Out</th><th>Balance</th><th></th></tr>
-            </thead>
-            <tbody id="entryList"></tbody>
-        </table>
-    </div>
-</div>
-
-<script>
+    <script>
 const CLIENT_ID = '276544229541-udlegtaa830stnsksmlspovakis9m337.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 const DATA_FILENAME = 'vishclick-cashbook-data.json';
@@ -112,7 +105,6 @@ const totalOutDisplay = document.getElementById('totalOutDisplay');
 const netBalanceDisplay = document.getElementById('netBalanceDisplay');
 const entryList = document.getElementById('entryList');
 const exportPdfButton = document.getElementById('exportPdfButton');
-const trashList = document.getElementById('trashList');
 
 let tokenClient, allData = {}, dataFileId = null, currentBookName = null;
 
@@ -157,13 +149,13 @@ function findDataFile() {
 }
 
 function readFile(fileId) {
-    gapi.client.drive.files.get({ fileId, alt: 'media' }).then(res => { allData = res.result || {}; checkTrashExpiry(); updateUiOnLogin(); })
+    gapi.client.drive.files.get({ fileId, alt: 'media' }).then(res => { allData = res.result || {}; updateUiOnLogin(); })
     .catch(()=>{ allData = {}; updateUiOnLogin(); });
 }
 
 function createFile() {
     gapi.client.drive.files.create({ resource: { name: DATA_FILENAME, mimeType: 'application/json' }, fields: 'id' })
-    .then(res => { dataFileId = res.result.id; allData={books:{},trash:[]}; saveDataFile(); updateUiOnLogin(); });
+    .then(res => { dataFileId = res.result.id; allData={}; saveDataFile(); updateUiOnLogin(); });
 }
 
 async function saveDataFile() {
@@ -180,7 +172,6 @@ async function saveDataFile() {
     });
 }
 
-// ===== UI Functions =====
 function showScreen(screen) {
     homeScreen.style.display = screen==='home'?'block':'none';
     detailsScreen.style.display = screen==='details'?'block':'none';
@@ -206,7 +197,6 @@ function updateUiOnLogin() {
     appContainer.style.display='block';
     showScreen('home');
     renderBookList();
-    renderTrashList();
 }
 
 function updateUiOnLogout() {
@@ -214,146 +204,169 @@ function updateUiOnLogout() {
     signoutButton.style.display='none';
     userInfo.style.display='none';
     appContainer.style.display='none';
-    allData={books:{},trash:[]}; dataFileId=null;
+    allData={}; dataFileId=null;
 }
 
-// ===== Book & Trash Functions =====
+// ====== Book & Trash Management ======
 function renderBookList() {
-    bookList.innerHTML='';
-    Object.keys(allData.books||{}).forEach(bookName=>{
-        const bookDiv=document.createElement('div');
-        bookDiv.className='book-item';
-        bookDiv.textContent=bookName;
-        bookDiv.addEventListener('click', ()=>showDetailsScreen(bookName));
-        const delBtn=document.createElement('button');
-        delBtn.textContent='X';
-        delBtn.className='delete-btn';
-        delBtn.onclick=()=>deleteBook(bookName);
-        bookDiv.appendChild(delBtn);
+    bookList.innerHTML = '';
+    const activeBooks = Object.keys(allData).filter(name => !allData[name].trashed);
+    const trashedBooks = Object.keys(allData).filter(name => allData[name].trashed);
+
+    activeBooks.forEach(bookName => {
+        const bookDiv = document.createElement('div');
+        bookDiv.className = 'book-item';
+        bookDiv.textContent = bookName;
+
+        const btnContainer = document.createElement('div');
+        const delBtn = document.createElement('button');
+        delBtn.textContent = 'Trash';
+        delBtn.style.marginLeft = '8px';
+        delBtn.onclick = () => deleteBook(bookName);
+        btnContainer.appendChild(delBtn);
+
+        bookDiv.appendChild(btnContainer);
+        bookDiv.addEventListener('click', () => showDetailsScreen(bookName));
         bookList.appendChild(bookDiv);
     });
-}
 
-function renderTrashList() {
-    trashList.innerHTML='';
-    const now=Date.now();
-    (allData.trash||[]).forEach((item,index)=>{
-        const div=document.createElement('div');
-        div.className='book-item';
-        const deletedOn = new Date(item.deletedAt);
-        const daysLeft = Math.max(0, 7 - Math.floor((now - item.deletedAt)/(1000*60*60*24)));
-        div.textContent=`${item.name} (Restore ${daysLeft} days left)`;
-        const restoreBtn=document.createElement('button');
-        restoreBtn.textContent='Restore';
-        restoreBtn.className='restore-btn';
-        restoreBtn.onclick=()=>restoreBook(item.name,index);
-        div.appendChild(restoreBtn);
-        trashList.appendChild(div);
-    });
-}
+    // Show trashed books separately
+    if (trashedBooks.length > 0) {
+        const trashHeader = document.createElement('h4');
+        trashHeader.textContent = 'Trashed Books (can restore within 7 days)';
+        trashHeader.style.marginTop = '20px';
+        bookList.append
+Child(trashHeader);
 
-function deleteBook(bookName){
-    if(!confirm(`Are you sure you want to delete "${bookName}"? It will go to trash for 7 days.`)) return;
-    const deletedAt=Date.now();
-    const bookData=allData.books[bookName];
-    allData.trash.push({name:bookName,data:bookData,deletedAt});
-    delete allData.books[bookName];
-    saveDataFile();
-    renderBookList();
-    renderTrashList();
-}
+        trashedBooks.forEach(bookName => {
+            const bookDiv = document.createElement('div');
+            bookDiv.className = 'book-item';
+            bookDiv.style.opacity = '0.6';
+            bookDiv.textContent = bookName;
 
-function restoreBook(bookName,index){
-    allData.books[bookName]=allData.trash[index].data;
-    allData.trash.splice(index,1);
-    saveDataFile();
-    renderBookList();
-    renderTrashList();
-}
+            const btnContainer = document.createElement('div');
+            const restoreBtn = document.createElement('button');
+            restoreBtn.textContent = 'Restore';
+            restoreBtn.style.marginLeft = '8px';
+            restoreBtn.onclick = () => restoreBook(bookName);
+            btnContainer.appendChild(restoreBtn);
 
-// Auto-remove expired trash
-function checkTrashExpiry(){
-    const now=Date.now();
-    const expired=[];
-    (allData.trash||[]).forEach((item,index)=>{
-        if(now - item.deletedAt > 7*24*60*60*1000){
-            expired.push(index);
-            // Remove from Drive if needed
-        }
-    });
-    for(let i=expired.length-1;i>=0;i--){
-        allData.trash.splice(expired[i],1);
+            bookDiv.appendChild(btnContainer);
+            bookList.appendChild(bookDiv);
+        });
     }
-    if(expired.length>0) saveDataFile();
 }
 
-// ===== Entry & PDF Functions =====
-addBookForm.addEventListener('submit', e=>{
+addBookForm.addEventListener('submit', e => {
     e.preventDefault();
-    const newBookName=newBookNameInput.value.trim();
-    if(newBookName && !allData.books[newBookName]){
-        allData.books[newBookName]=[];
-        newBookNameInput.value='';
-        renderBookList();
-        saveDataFile();
-    } else { alert('Book name exists or invalid'); }
+    const name = newBookNameInput.value.trim();
+    if (!name) return alert('Book name required');
+    if (allData[name] && !allData[name].trashed) return alert('Book already exists');
+    allData[name] = { entries: [], trashed: false, trashTime: null };
+    saveDataFile(); newBookNameInput.value = '';
+    renderBookList();
 });
 
-function addEntry(type){
-    const amount=parseFloat(amountInput.value);
-    if(!currentBookName) return alert('Select a book first.');
-    if(isNaN(amount) || amount<=0) return alert('Enter valid amount.');
-    if(remarkInput.value.trim()==='') return alert('Enter remark.');
-    const dateVal=dateInput.value||new Date().toISOString().slice(0,10);
-    const timeVal=timeInput.value||new Date().toTimeString().slice(0,5);
-    const newEntry={ id: Date.now()+Math.floor(Math.random()*1000), date:`${dateVal} ${timeVal}`, remark:remarkInput.value.trim(), mode:modeInput.value, amount:Number(amount), type };
-    if(!allData.books[currentBookName]) allData.books[currentBookName]=[];
-    allData.books[currentBookName].push(newEntry);
-    renderEntries();
-    saveDataFile();
-    amountInput.value=''; remarkInput.value='';
+function deleteBook(name) {
+    if (!confirm(`Are you sure you want to move "${name}" to Trash?`)) return;
+    allData[name].trashed = true;
+    allData[name].trashTime = new Date().getTime();
+    saveDataFile(); renderBookList();
 }
 
-function renderEntries(){
-    if(!currentBookName) return;
-    const originalEntries=allData.books[currentBookName]||[];
-    const entries=originalEntries.slice().sort((a,b)=>new Date(a.date)-new Date(b.date));
-    let totalIn=0,totalOut=0;
-    const runningBalances=[];
-    let running=0;
-    entries.forEach(e=>{
-        if(e.type==='in') totalIn+=Number(e.amount||0);
-        else totalOut+=Number(e.amount||0);
-        running+=(e.type==='in'?Number(e.amount||0):-Number(e.amount||0));
-        runningBalances.push(running);
+function restoreBook(name) {
+    allData[name].trashed = false;
+    allData[name].trashTime = null;
+    saveDataFile(); renderBookList();
+}
+
+// ====== Entries ======
+function renderEntries() {
+    if (!currentBookName) return;
+    const book = allData[currentBookName];
+    entryList.innerHTML = '';
+    let totalIn=0, totalOut=0, balance=0;
+
+    book.entries.forEach(entry => {
+        if (entry.trashed) return;
+        balance += entry.type==='in'?entry.amount:-entry.amount;
+        if (entry.type==='in') totalIn+=entry.amount; else totalOut+=entry.amount;
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${entry.date} ${entry.time}</td>
+            <td>${entry.remark}</td>
+            <td>${entry.mode}</td>
+            <td class="cash-in">${entry.type==='in'?entry.amount.toFixed(2):''}</td>
+            <td class="cash-out">${entry.type==='out'?entry.amount.toFixed(2):''}</td>
+            <td>${balance.toFixed(2)}</td>
+            <td><button class="delete-btn" onclick="trashEntry('${entry.id}')">Trash</button></td>
+        `;
+        entryList.appendChild(tr);
     });
 
-    entryList.innerHTML='';
-    for(let i=entries.length-1;i>=0;i--){
-        const e=entries[i];
-        const bal=runningBalances[i];
-        const row=entryList.insertRow();
-        row.insertCell(0).textContent=new Date(e.date).toLocaleString();
-        row.insertCell(1).textContent=e.remark;
-        row.insertCell(2).textContent=e.mode;
-        const ci=row.insertCell(3),co=row.insertCell(4);
-        if(e.type==='in'){ ci.textContent=Number(e.amount).toFixed(2); ci.className='cash-in'; co.textContent='-'; }
-        else{ co.textContent=Number(e.amount).toFixed(2); co.className='cash-out'; ci.textContent='-'; }
-        row.insertCell(5).textContent=bal.toFixed(2);
-        const del=row.insertCell(6);
-        const delBtn=document.createElement('button'); delBtn.textContent='X'; delBtn.className='delete-btn';
-        delBtn.onclick=()=>{ if(confirm('Delete entry?')){ const idx=allData.books[currentBookName].findIndex(x=>x.id===e.id); if(idx>-1){ allData.books[currentBookName].splice(idx,1); renderEntries(); saveDataFile(); } } };
-        del.appendChild(delBtn);
-    }
-    totalInDisplay.textContent=totalIn.toFixed(2);
-    totalOutDisplay.textContent=totalOut.toFixed(2);
-    netBalanceDisplay.textContent=(totalIn-totalOut).toFixed(2);
+    totalInDisplay.textContent = totalIn.toFixed(2);
+    totalOutDisplay.textContent = totalOut.toFixed(2);
+    netBalanceDisplay.textContent = (totalIn-totalOut).toFixed(2);
+}
+
+function generateId() {
+    return 'id-' + Math.random().toString(36).substr(2,9);
+}
+
+function addEntry(type) {
+    if (!currentBookName) return;
+    const date = dateInput.value;
+    const time = timeInput.value;
+    const mode = modeInput.value;
+    const amount = parseFloat(amountInput.value);
+    const remark = remarkInput.value.trim();
+    if (!amount || !remark || !date || !time) return alert('Fill all fields');
+    const entry = { id: generateId(), date, time, mode, amount, remark, type, trashed: false, trashTime: null };
+    allData[currentBookName].entries.push(entry);
+    saveDataFile(); amountInput.value=''; remarkInput.value=''; renderEntries();
 }
 
 cashInButton.addEventListener('click', ()=>addEntry('in'));
 cashOutButton.addEventListener('click', ()=>addEntry('out'));
 
-// PDF export code remains same as previous version (copy your exportPdfButton listener)
-</script>
+function trashEntry(id) {
+    if (!confirm('Move this entry to Trash?')) return;
+    const book = allData[currentBookName];
+    const entry = book.entries.find(e=>e.id===id);
+    if(entry) { entry.trashed = true; entry.trashTime = new Date().getTime(); saveDataFile(); renderEntries(); }
+}
+
+// ====== Auto purge trash older than 7 days ======
+function purgeOldTrash() {
+    const now = new Date().getTime();
+    for (const bookName in allData) {
+        const book = allData[bookName];
+        if (book.trashed && book.trashTime && now - book.trashTime > 7*24*60*60*1000) delete allData[bookName];
+        if (book.entries) {
+            book.entries = book.entries.filter(e => !(e.trashed && e.trashTime && now - e.trashTime > 7*24*60*60*1000));
+        }
+    }
+    saveDataFile(); renderBookList(); if(currentBookName) renderEntries();
+}
+
+// Call auto purge on load
+purgeOldTrash();
+
+// ====== PDF Export ======
+exportPdfButton.addEventListener('click', ()=>{
+    if(!currentBookName) return;
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    doc.setFontSize(18); doc.text(currentBookName, 14, 22);
+    const book = allData[currentBookName];
+    const rows = book.entries.filter(e=>!e.trashed).map(e=>[
+        `${e.date} ${e.time}`, e.remark, e.mode,
+        e.type==='in'?e.amount.toFixed(2):'', e.type==='out'?e.amount.toFixed(2):''
+    ]);
+    doc.autoTable({ head: [['Date','Remark','Mode','Cash In','Cash Out']], body: rows, startY:30 });
+    doc.save(`${currentBookName}.pdf`);
+});
+    </script>
 </body>
 </html>
