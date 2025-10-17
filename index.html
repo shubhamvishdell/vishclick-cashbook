@@ -328,30 +328,32 @@
     doc.setFont(undefined,'bold');
     doc.text(`Book: ${currentBookName}`, pageWidth/2, 19, { align: 'center' });
 
-    // Totals Section
-    const totalsY = 24;
-    const totalWidth = 60;
-    const gap = 5;
-    const totalStartX = (pageWidth - ((totalWidth*3)+gap*2))/2;
+    // ====== Totals Section (clean + aligned + without rupee sign) ======
+const totalWidth = 60;
+const gap = 5;
+const totalsY = 30; // adjust as needed
+const totalStartX = 20;
 
-    // Total In
-    doc.setFillColor(220,255,220);
-    doc.rect(totalStartX, totalsY, totalWidth, 8,'F');
-    doc.setTextColor(0,128,0);
-    doc.setFont(undefined,'bold');
-    doc.text(`Total In: ₹ ${totalIn.toFixed(2)}`, totalStartX+totalWidth/2, totalsY+6, { align: 'center' });
+doc.setFontSize(9);
+doc.setFont(undefined, 'bold');
 
-    // Total Out
-    doc.setFillColor(255,220,220);
-    doc.rect(totalStartX+totalWidth+gap, totalsY, totalWidth, 8,'F');
-    doc.setTextColor(220,0,0);
-    doc.text(`Total Out: ₹ ${totalOut.toFixed(2)}`, totalStartX+totalWidth+gap+totalWidth/2, totalsY+6, { align: 'center' });
+// Total In
+doc.setFillColor(220, 255, 220); // light green background
+doc.rect(totalStartX, totalsY, totalWidth, 8, 'F');
+doc.setTextColor(0, 128, 0); // green text
+doc.text(`Total In: ${totalIn.toFixed(2)}`, totalStartX + 3, totalsY + 6); // left aligned
 
-    // Net Balance
-    doc.setFillColor(220,220,255);
-    doc.rect(totalStartX+(totalWidth+gap)*2, totalsY, totalWidth, 8,'F');
-    doc.setTextColor(75,0,130);
-    doc.text(`Net Balance: ₹ ${(totalIn-totalOut).toFixed(2)}`, totalStartX+(totalWidth+gap)*2+totalWidth/2, totalsY+6, { align: 'center' });
+// Total Out
+doc.setFillColor(255, 220, 220); // light red background
+doc.rect(totalStartX + totalWidth + gap, totalsY, totalWidth, 8, 'F');
+doc.setTextColor(220, 0, 0); // red text
+doc.text(`Total Out: ${totalOut.toFixed(2)}`, totalStartX + totalWidth + gap + 3, totalsY + 6);
+
+// Net Balance
+doc.setFillColor(220, 220, 255); // light violet-blue background
+doc.rect(totalStartX + (totalWidth + gap) * 2, totalsY, totalWidth, 8, 'F');
+doc.setTextColor(75, 0, 130); // violet text
+doc.text(`Net Balance: ${(totalIn - totalOut).toFixed(2)}`, totalStartX + (totalWidth + gap) * 2 + 3, totalsY + 6);
 
     // Table with auto page break
     const tableBody = rows.map(r => [r.date,r.remark,r.mode,r.cashIn,r.cashOut,r.balance]);
