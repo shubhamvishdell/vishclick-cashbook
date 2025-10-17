@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>VishClick : Design Studio</title>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://apis.google.com/js/api.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 10px; max-width: 900px; margin: auto; color: #333; }
+        .auth-section { margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; min-height: 40px; }
+        #app-container { display: none; }
+        #user-info { font-weight: bold; }
+        button { margin: 5px 0; padding: 10px 15px; cursor: pointer; border-radius: 8px; border: 1px solid #ccc; background-color: #f0f0f0; font-size: 14px; }
+        button:hover { background-color: #e0e0e0; }
+        input, select { box-sizing: border-box; padding: 10px; border-radius: 8px; border: 1px solid #ccc; width: 100%; margin-bottom: 10px; font-size: 14px; }
+        .book-item { display: flex; justify-content: space-between; align-items: center; padding: 15px; border: 1px solid #eee; margin-top: 8px; cursor: pointer; border-radius: 8px; }
+        .book-item:hover { background-color: #f9f9f9; }
+        .delete-btn { color: red; cursor: pointer; border: none; background: none; font-size: 1.1em; padding: 0 8px; }
+        .cash-in { color: #28a745; font-weight: bold; }
+        .cash-out { color: #dc3545; font-weight: bold; }
+        #summary { border: 1px solid #ccc; padding: 15px; margin-bottom: 10px; border-radius: 8px; background-color: #fafafa; display: flex; justify-content: space-between; }
+        table { border-collapse: collapse; width: 100%; margin-top: 15px; }
+        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+        th { background-color: #f2f2f2; }
+    </style>
+</head>
+<body>
+    <h2 style="text-align: center; background-color: navy; color: white; padding: 10px;"><strong>VishClick : Design Studio</strong></h2>
+
+    <div class="auth-section">
+        <div id="g_id_signin"></div>
+        <div id="user-info" style="display: none;"></div>
+        <button id="signout_button" style="display: none;">Sign Out</button>
+    </div>
+    <hr>
+
+    <div id="app-container">
+        <div id="homeScreen">
+            <h3>My Cashbooks</h3>
+            <form id="addBookForm">
+                <input type="text" id="newBookName" placeholder="New cashbook name" required>
+                <button type="submit">Add New Book</button>
+            </form>
+            <div id="bookList"></div>
+        </div>
+
+        <div id="detailsScreen" style="display: none;">
+            <button id="backButton">&larr; Back to Home</button>
+            <h2 id="bookTitle" style="background-color: #e6e6fa; padding: 8px;"></h2>
+            <h3>Add New Entry</h3>
+            <form id="entryForm" onsubmit="return false;">
+                <input type="date" id="dateInput"> <input type="time" id="timeInput">
+                <select id="modeInput">
+                    <option value="Cash">Cash</option> <option value="Online">Online</option>
+                </select>
+                <input type="number" id="amountInput" placeholder="Amount (₹)" required>
+                <input type="text" id="remarkInput" placeholder="Enter details" required>
+                <button type="button" id="cashInButton">CASH IN</button>
+                <button type="button" id="cashOutButton">CASH OUT</button>
+            </form>
+            <hr>
+            <div id="summary">
+                <div>Total In (+): <strong id="totalInDisplay" class="cash-in">0.00</strong></div>
+                <div>Total Out (-): <strong id="totalOutDisplay" class="cash-out">0.00</strong></div>
+                <div>Net Balance: <strong id="netBalanceDisplay">0.00</strong></div>
+            </div>
+            <button type="button" id="exportPdfButton">Export Report as PDF</button>
+            <h3>Entries</h3>
+            <table>
+                <thead>
+                    <tr><th>Date</th><th>Remark</th><th>Mode</th><th>Cash In</th><th>Cash Out</th><th>Balance</th><th></th></tr>
+                </thead>
+                <tbody id="entryList"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const CLIENT_ID = '276544229541-udlegtaa830stnsksmlspovakis9m337.apps.googleusercontent.com';
+        const SCOPES = 'https://www.googleapis.com/auth/drive.file';
+        const DATA_FILENAME = 'vishclick-cashbook-data.json';
+
+        const gIdSignin = document.getElementById('g_id_signin');
+        const appContainer = document.getElementById('app-container');
+        const homeScreen = document.getElementById('homeScreen');
+        const detailsScreen = document.getElementById('detailsScreen');
+        const bookList = document.getElementById('bookList');
+        const addBookForm = document.getElementById('addBookForm');
+        const newBookNameInput = document.getElementById('newBookName');
+        const signoutButton = document.getElementById('signout_button');
+        const userInfo = document.getElementById('user-info');
+        const backButton = document.getElementById('backButton');
+        const bookTitle = document.getElementById('bookTitle');
+        const dateInput = document.getElementById('dateInput');
+        const timeInput = document.getElementById('timeInput');
+        const modeInput = document.getElementById('modeInput');
+        const amountInput = document.getElementById('amountInput');
+        const remarkInput = document.getElementById('remarkInput');
+        const cashInButton = document.getElementById('cashInButton');
+        const cashOutButton = document.getElementById('cashOutButton');
+        const totalInDisplay = document.getElementById('totalInDisplay');
+        const totalOutDisplay = document.getElementById('totalOutDisplay');
+        const netBalanceDisplay = document.getElementById('netBalanceDisplay');
+        const entryList = document.getElementById('entryList');
+        const exportPdfButton = document.getElementById('exportPdfButton');
+
+        let tokenClient, allData = {}, dataFileId = null, currentBookName = null;
+
+        window.onload = function() {
+            if (window.google && google.accounts && google.accounts.id) {
+                google.accounts.id.initialize({ client_id: CLIENT_ID, callback: handleCredentialResponse });
+                google.accounts.id.renderButton(gIdSignin, { theme: 'outline', size: 'large' });
+                tokenClient = google.accounts.oauth2.initTokenClient({ client_id: CLIENT_ID, scope: SCOPES, callback: handleTokenResponse });
+            } else { updateUiOnLogin(); }
+        };
+
+        function handleCredentialResponse(response) { 
+            if (tokenClient) tokenClient.requestAccessToken(); 
+        }
+        
+        function handleTokenResponse(tokenResponse) {
+            if (tokenResponse && tokenResponse.access_token) {
+                gapi.load('client', () => initGapiClient(tokenResponse));
+            }
+        }
+        
+        function initGapiClient(tokenResponse) {
+            gapi.client.init({}).then(() => {
+                gapi.client.setToken(tokenResponse);
+                gapi.client.load('drive', 'v3', findDataFile);
+            }).catch(err=>{ console.warn(err); updateUiOnLogin(); });
+        }
+        
+        signoutButton.addEventListener('click', () => {
+            if (dataFileId) saveDataFile(); 
+            if (google && google.accounts && google.accounts.id) google.accounts.id.disableAutoSelect();
+            updateUiOnLogout();
+        });
+
+        function findDataFile() {
+            gapi.client.drive.files.list({
+                q: `name='${DATA_FILENAME}' and trashed=false`, fields: 'files(id)', spaces: 'drive'
+            }).then(res => {
+                if (res.result.files.length>0) { dataFileId = res.result.files[0].id; readFile(dataFileId); } 
+                else { createFile(); }
+            }).catch(() => { createFile(); });
+        }
+
+        function readFile(fileId) {
+            gapi.client.drive.files.get({ fileId, alt: 'media' }).then(res => { allData = res.result || {}; updateUiOnLogin(); })
+            .catch(()=>{ allData = {}; updateUiOnLogin(); });
+        }
+        
+        function createFile() {
+            gapi.client.drive.files.create({ resource: { name: DATA_FILENAME, mimeType: 'application/json' }, fields: 'id' })
+            .then(res => { dataFileId = res.result.id; allData={}; saveDataFile(); updateUiOnLogin(); });
+        }
+
+        async function saveDataFile() {
+            if (!dataFileId) return;
+            const content = JSON.stringify(allData);
+            const blob = new Blob([content], { type: 'application/json' });
+            const form = new FormData();
+            form.append('metadata', new Blob([JSON.stringify({ mimeType: 'application/json' })], { type: 'application/json' }));
+            form.append('file', blob);
+            await fetch(`https://www.googleapis.com/upload/drive/v3/files/${dataFileId}?uploadType=multipart`, {
+                method: 'PATCH',
+                headers: { 'Authorization': `Bearer ${gapi.client.getToken().access_token}` },
+                body: form
+            });
+        }
+
+        function showScreen(screen) {
+            homeScreen.style.display = screen==='home'?'block':'none';
+            detailsScreen.style.display = screen==='details'?'block':'none';
+        }
+
+        function showDetailsScreen(bookName) {
+            currentBookName = bookName;
+            bookTitle.textContent = bookName;
+            const now = new Date();
+            dateInput.value = now.toISOString().slice(0,10);
+            timeInput.value = now.toTimeString().slice(0,5);
+            renderEntries();
+            showScreen('details');
+        }
+
+        backButton.addEventListener('click', ()=>showScreen('home'));
+        
+        function updateUiOnLogin() {
+            gIdSignin.style.display='none';
+            signoutButton.style.display='block';
+            userInfo.style.display='block';
+            userInfo.textContent='Signed in';
+            appContainer.style.display='block';
+            showScreen('home');
+            renderBookList();
+        }
+
+        function updateUiOnLogout() {
+            gIdSignin.style.display='block';
+            signoutButton.style.display='none';
+            userInfo.style.display='none';
+            appContainer.style.display='none';
+            allData={}; dataFileId=null;
+        }
+        
+        function renderBookList() {
+            bookList.innerHTML='';
+            Object.keys(allData).forEach(bookName=>{
+                const bookDiv=document.createElement('div');
+                bookDiv.className='book-item';
+                bookDiv.textContent=bookName;
+                bookDiv.addEventListener('click', ()=>showDetailsScreen(bookName));
+                bookList.appendChild(bookDiv);
+            });
+        }
+        
+        addBookForm.addEventListener('submit', e=>{
+            e.preventDefault();
+            const newBookName=newBookNameInput.value.trim();
+            if(newBookName && !allData[newBookName]){
+                allData[newBookName]=[];
+                newBookNameInput.value='';
+                renderBookList();
+                saveDataFile();
+            } else { alert('Book name exists or invalid'); }
+        });
+
+        function addEntry(type){
+            const amount=parseFloat(amountInput.value);
+            if(!currentBookName) return alert('Select a book first.');
+            if(isNaN(amount) || amount<=0) return alert('Enter valid amount.');
+            if(remarkInput.value.trim()==='') return alert('Enter remark.');
+            const dateVal=dateInput.value||new Date().toISOString().slice(0,10);
+            const timeVal=timeInput.value||new Date().toTimeString().slice(0,5);
+            const newEntry={ id: Date.now()+Math.floor(Math.random()*1000), date:`${dateVal} ${timeVal}`, remark:remarkInput.value.trim(), mode:modeInput.value, amount:Number(amount), type };
+            if(!allData[currentBookName]) allData[currentBookName]=[];
+            allData[currentBookName].push(newEntry);
+            renderEntries();
+            saveDataFile();
+            amountInput.value=''; remarkInput.value='';
+        }
+
+        function renderEntries(){
+            if(!currentBookName) return;
+            const originalEntries=allData[currentBookName]||[];
+            const entries=originalEntries.slice().sort((a,b)=>new Date(a.date)-new Date(b.date));
+            let totalIn=0,totalOut=0;
+            const runningBalances=[];
+            let running=0;
+            entries.forEach(e=>{
+                if(e.type==='in') totalIn+=Number(e.amount||0);
+                else totalOut+=Number(e.amount||0);
+                running+=(e.type==='in'?Number(e.amount||0):-Number(e.amount||0));
+                runningBalances.push(running);
+            });
+
+            entryList.innerHTML='';
+            for(let i=entries.length-1;i>=0;i--){
+                const e=entries[i];
+                const bal=runningBalances[i];
+                const row=entryList.insertRow();
+                row.insertCell(0).textContent=new Date(e.date).toLocaleString();
+                row.insertCell(1).textContent=e.remark;
+                row.insertCell(2).textContent=e.mode;
+                const ci=row.insertCell(3),co=row.insertCell(4);
+                if(e.type==='in'){ ci.textContent=Number(e.amount).toFixed(2); ci.className='cash-in'; co.textContent='-'; }
+                else{ co.textContent=Number(e.amount).toFixed(2); co.className='cash-out'; ci.textContent='-'; }
+                row.insertCell(5).textContent=bal.toFixed(2);
+                const del=row.insertCell(6);
+                const delBtn=document.createElement('button'); delBtn.textContent='X'; delBtn.className='delete-btn';
+                delBtn.onclick=()=>{ if(confirm('Delete?')){ const idx=allData[currentBookName].findIndex(x=>x.id===e.id); if(idx>-1){ allData[currentBookName].splice(idx,1); renderEntries(); saveDataFile(); } } };
+                del.appendChild(delBtn);
+            }
+            totalInDisplay.textContent=totalIn.toFixed(2);
+            totalOutDisplay.textContent=totalOut.toFixed(2);
+            netBalanceDisplay.textContent=(totalIn-totalOut).toFixed(2);
+        }
+
+        cashInButton.addEventListener('click', ()=>addEntry('in'));
+        cashOutButton.addEventListener('click', ()=>addEntry('out'));
+
+        // PDF export with bar graph
+        exportPdfButton.addEventListener('click', () => {
+    const originalEntries = allData[currentBookName] || [];
+    if (!originalEntries || originalEntries.length === 0) return alert('No entries to export!');
+
+    // Sort chronological
+    const entries = originalEntries.slice().sort((a,b) => new Date(a.date) - new Date(b.date));
+
+    // Running balances
+    let running = 0;
+    const rowsForPdf = entries.map(e => {
+        running += e.type === 'in' ? Number(e.amount) : -Number(e.amount);
+        return [
+            new Date(e.date).toLocaleString(),
+            e.remark,
+            e.mode,
+            e.type === 'in' ? Number(e.amount).toFixed(2) : '-',
+            e.type === 'out' ? Number(e.amount).toFixed(2) : '-',
+            running.toFixed(2)
+        ];
+    }).reverse(); // newest first in PDF
+
+    let totalIn = entries.reduce((sum,e)=>sum+(e.type==='in'?Number(e.amount):0),0);
+    let totalOut = entries.reduce((sum,e)=>sum+(e.type==='out'?Number(e.amount):0),0);
+    let netBalance = totalIn - totalOut;
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+
+    // Book name left-aligned
+    doc.setFontSize(16);
+    doc.setTextColor(255,255,255);
+    doc.setFillColor(0,0,128); // navy blue
+    doc.rect(0, 0, 210, 12, 'F'); // full width rectangle
+    doc.text(`VishClick : Design Studio`, 10, 9);
+
+    // Subheading: Book Name
+    doc.setFontSize(12);
+    doc.setTextColor(0);
+    doc.setFillColor(230,230,250); // light violet
+    doc.rect(0, 14, 210, 10, 'F');
+    doc.text(`Cashbook: ${currentBookName}`, 10, 22);
+
+    // Totals highlight boxes
+    const boxY = 26;
+    doc.setFontSize(11);
+
+    // Total In
+    doc.setFillColor(198, 239, 206); // green-ish
+    doc.rect(10, boxY, 60, 8, 'F');
+    doc.setTextColor(0,128,0);
+    doc.text(`Total In: ₹${totalIn.toFixed(2)}`, 12, boxY+6);
+
+    // Total Out
+    doc.setFillColor(255, 199, 206); // red-ish
+    doc.rect(75, boxY, 60, 8, 'F');
+    doc.setTextColor(220,0,0);
+    doc.text(`Total Out: ₹${totalOut.toFixed(2)}`, 77, boxY+6);
+
+    // Net Balance
+    doc.setFillColor(255, 235, 156); // yellow-ish
+    doc.rect(140, boxY, 60, 8, 'F');
+    doc.setTextColor(128,64,0);
+    doc.text(`Net Balance: ₹${netBalance.toFixed(2)}`, 142, boxY+6);
+
+    // Table
+    doc.autoTable({
+        startY: boxY + 12,
+        head: [['Date','Remark','Mode','Cash In','Cash Out','Balance']],
+        body: rowsForPdf,
+        theme: 'grid',
+        headStyles:{fillColor:[240,240,240], textColor:0},
+        alternateRowStyles:{fillColor:[245,245,245]},
+        styles:{fontSize:9}
+    });
+
+    doc.save(`${currentBookName}_Cashbook.pdf`);
+});
+    </script>
+</body>
+</html>
+
