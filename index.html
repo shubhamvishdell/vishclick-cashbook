@@ -292,17 +292,20 @@
 
 
     let running = 0;
-    const rows = entries.map(e => {
-        running += (e.type === 'in') ? Number(e.amount || 0) : -Number(e.amount || 0);
-        return {
-            date: new Date(e.date).toLocaleString(),
-            remark: e.remark,
-            mode: e.mode,
-            cashIn: e.type === 'in' ? Number(e.amount).toFixed(2) : '-',
-            cashOut: e.type === 'out' ? Number(e.amount).toFixed(2) : '-',
-            balance: running.toFixed(2)
-        };
-    });
+    const calculatedRows = entries.map(e => {
+    running += (e.type === 'in') ? Number(e.amount || 0) : -Number(e.amount || 0);
+    return {
+        date: new Date(e.date).toLocaleString(),
+        remark: e.remark,
+        mode: e.mode,
+        cashIn: e.type === 'in' ? Number(e.amount).toFixed(2) : '-',
+        cashOut: e.type === 'out' ? Number(e.amount).toFixed(2) : '-',
+        balance: running.toFixed(2)
+    };
+});
+
+// ✅ Reverse only after balance is correctly calculated
+const rows = calculatedRows.reverse();
 
     let totalIn = 0, totalOut = 0;
     entries.forEach(e => { if(e.type==='in') totalIn+=Number(e.amount||0); else totalOut+=Number(e.amount||0); });
