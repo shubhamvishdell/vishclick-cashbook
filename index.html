@@ -30,8 +30,8 @@
         .balance-badge { padding: 6px 10px; border-radius: 8px; font-weight: bold; }
         .balance-positive { background: #e6ffec; color: #0b7a3a; border: 1px solid #c8f1d1; }
         .balance-negative { background: #fff0f0; color: #a00; border: 1px solid #f2c7c7; }
-        /* Edit modal (keeps UI minimal) */
-        #editModal { position: fixed; left: 0; top:0; right:0; bottom:0; display:none; align-items:center; justify-content:center; background: rgba(0,0,0,0.4); z-index: 9999; }
+        /* Edit modal */
+        #editModal { position: fixed; left:0; top:0; right:0; bottom:0; display:none; align-items:center; justify-content:center; background: rgba(0,0,0,0.4); z-index: 9999; }
         #editModal .card { width: 420px; background: #fff; padding: 16px; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); }
         #editModal h4 { margin: 0 0 8px 0; }
         .small { font-size: 12px; padding:6px 8px; border-radius:6px; }
@@ -117,7 +117,10 @@
         const SCOPES = 'https://www.googleapis.com/auth/drive.file';
         const DATA_FILENAME = 'vishclick-cashbook-data.json';
 
-        // DOM references
+        let tokenClient, accessToken = null;
+        let allData = {}, dataFileId = null, currentBookName = null, editingEntryId = null;
+
+        // DOM refs
         const gIdSignin = document.getElementById('g_id_signin');
         const appContainer = document.getElementById('app-container');
         const homeScreen = document.getElementById('homeScreen');
@@ -142,7 +145,6 @@
         const entryList = document.getElementById('entryList');
         const exportPdfButton = document.getElementById('exportPdfButton');
 
-        // Edit modal elements
         const editModal = document.getElementById('editModal');
         const editDate = document.getElementById('editDate');
         const editTime = document.getElementById('editTime');
@@ -152,482 +154,386 @@
         const saveEdit = document.getElementById('saveEdit');
         const cancelEdit = document.getElementById('cancelEdit');
 
-        let tokenClient, allData = {}, dataFileId = null, currentBookName = null;
-        // For editing
-        let editingEntryId = null;
-
-        // ------------------ local backup helpers -----------------
+        // Local backup helpers
         function saveToLocalBackup() {
             try {
                 localStorage.setItem('vc_allData', JSON.stringify(allData || {}));
                 if (dataFileId) localStorage.setItem('vc_dataFileId', dataFileId);
-            } catch (e) { console.warn('Local backup failed', e); }
+            } catch (e) { console.warn('Local backup fail', e); }
         }
         function loadFromLocalBackup() {
             try {
                 const t = localStorage.getItem('vc_allData');
                 const id = localStorage.getItem('vc_dataFileId');
-                if (t) {
-                    allData = JSON.parse(t) || {};
-                }
+                if (t) allData = JSON.parse(t);
                 if (id) dataFileId = id;
-            } catch (e) { console.warn('Failed to load local backup', e); }
+            } catch (e) { console.warn('Local load fail', e); }
         }
-        // Load early for instant UI on refresh
         loadFromLocalBackup();
 
-        window.onload = function() {
-            if (window.google && google.accounts && google.accounts.id) {
-                google.accounts.id.initialize({ client_id: CLIENT_ID, callback: handleCredentialResponse });
-                google.accounts.id.renderButton(gIdSignin, { theme: 'outline', size: 'large' });
-                tokenClient = google.accounts.oauth2.initTokenClient({ client_id: CLIENT_ID, scope: SCOPES, callback: handleTokenResponse });
-            }
-            // If local data exists, show UI quickly (user still needs to sign in for Drive)
-            if (Object.keys(allData).length > 0) {
-                updateUiOnLogin(true); // local-only render
-            }
+        // Authentication & Google Drive init
+        window.onload = () => {
+          google.accounts.id.initialize({
+            client_id: CLIENT_ID,
+            callback: handleCredentialResponse
+          });
+          google.accounts.id.renderButton(gIdSignin, {
+            theme: 'outline', size: 'large'
+          });
+          google.accounts.id.prompt();
+          // If local data exists, show UI until Google Auth done
+          if (Object.keys(allData).length > 0) {
+            userInfo.style.display = 'block';
+            userInfo.textContent = 'Signed in (local data)';
+            gIdSignin.style.display = 'none';
+            signoutButton.style.display = 'block';
+            appContainer.style.display = 'block';
+            renderBookList();
+          }
         };
 
-        function handleCredentialResponse(response) { 
-            if (tokenClient) tokenClient.requestAccessToken(); 
-        }
-        
-        function handleTokenResponse(tokenResponse) {
-            if (tokenResponse && tokenResponse.access_token) {
-                gapi.load('client', () => initGapiClient(tokenResponse));
+        function handleCredentialResponse(response) {
+          tokenClient = google.accounts.oauth2.initTokenClient({
+            client_id: CLIENT_ID,
+            scope: SCOPES,
+            callback: (tokenResponse) => {
+              accessToken = tokenResponse.access_token;
+              if (accessToken) {
+                gapi.load('client', initGapi);
+              }
             }
-        }
-        
-        function initGapiClient(tokenResponse) {
-            gapi.client.init({}).then(() => {
-                gapi.client.setToken(tokenResponse);
-                gapi.client.load('drive', 'v3', findDataFile);
-            }).catch(err => { console.warn(err); });
+          });
+          tokenClient.requestAccessToken();
         }
 
-        signoutButton.addEventListener('click', async () => {
-            // Save locally before sign out
-            saveToLocalBackup();
-            // Try to save to Drive (best-effort)
-            if (dataFileId) await saveDataFile();
-            if (google && google.accounts && google.accounts.id) google.accounts.id.disableAutoSelect();
-            updateUiOnLogout();
-        });
+        function initGapi() {
+          gapi.client.init({}).then(() => {
+            gapi.client.setToken({ access_token: accessToken });
+            userInfo.style.display = 'block';
+            userInfo.textContent = 'Signed in';
+            signoutButton.style.display = 'block';
+            gIdSignin.style.display = 'none';
+            appContainer.style.display = 'block';
+            findOrCreateFile();
+            renderBookList();
+          }).catch(err => console.warn('GAPI init error', err));
+        }
 
-        // ------------------ Drive handling (safer) -----------------
-        function findDataFile() {
-            // Try stored ID first
-            if (dataFileId) {
-                gapi.client.drive.files.get({ fileId: dataFileId, fields: 'id,name' })
-                .then(() => { readFile(dataFileId); })
-                .catch(err => {
-                    console.warn('Stored fileId invalid or inaccessible, falling back to search.', err);
-                    listFilesByName();
-                });
-            } else {
-                listFilesByName();
-            }
+        signoutButton.onclick = () => {
+          accessToken = null;
+          google.accounts.id.disableAutoSelect();
+          gIdSignin.style.display = 'block';
+          signoutButton.style.display = 'none';
+          userInfo.style.display = 'none';
+          appContainer.style.display = 'none';
+          saveToLocalBackup();
+        };
 
-            function listFilesByName() {
-                gapi.client.drive.files.list({
-                    q: `name='${DATA_FILENAME}' and trashed=false`,
-                    fields: 'files(id,name)', spaces: 'drive'
-                }).then(res => {
-                    if (res.result.files && res.result.files.length > 0) {
-                        dataFileId = res.result.files[0].id;
-                        try { localStorage.setItem('vc_dataFileId', dataFileId); } catch(e) {}
-                        readFile(dataFileId);
-                    } else {
-                        // create file but initialize with local backup if available
-                        createFile();
-                    }
-                }).catch(err => {
-                    console.warn('Error listing files, will try to use local backup only.', err);
-                    updateUiOnLogin(true);
-                });
-            }
+        // Drive file find/create
+        function findOrCreateFile() {
+          if (!accessToken) {
+            renderBookList();
+            return;
+          }
+          const stored = localStorage.getItem('vc_dataFileId');
+          if (stored) {
+            dataFileId = stored;
+            readFile(stored);
+          } else {
+            gapi.client.drive.files.list({
+              q: `name='${DATA_FILENAME}' and trashed=false`,
+              fields: 'files(id,name)'
+            }).then(res => {
+              if (res.result.files && res.result.files.length > 0) {
+                dataFileId = res.result.files[0].id;
+                localStorage.setItem('vc_dataFileId', dataFileId);
+                readFile(dataFileId);
+              } else {
+                createFile();
+              }
+            }).catch(err => {
+              console.warn('Drive list error', err);
+              renderBookList();
+            });
+          }
         }
 
         function readFile(fileId) {
-            gapi.client.drive.files.get({ fileId, alt: 'media' }).then(res => {
-                try {
-                    // some gapi versions put data in res.result or res.body
-                    const parsed = res.result || (res.body ? JSON.parse(res.body) : null);
-                    if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) allData = parsed;
-                } catch (e) {
-                    console.warn('Failed parsing drive file content, using local backup if available', e);
-                }
-                saveToLocalBackup();
-                updateUiOnLogin();
-            }).catch(err => {
-                console.warn('Failed to read file from Drive, using local backup', err);
-                loadFromLocalBackup();
-                updateUiOnLogin(true);
-            });
+          gapi.client.drive.files.get({ fileId, alt: 'media' }).then(res => {
+            allData = res.result || {};
+            saveToLocalBackup();
+            renderBookList();
+          }).catch(err => {
+            console.warn('Drive read error', err);
+            renderBookList();
+          });
         }
 
         function createFile() {
-            // create empty or with local content
-            gapi.client.drive.files.create({ resource: { name: DATA_FILENAME, mimeType: 'application/json' }, fields: 'id' })
-            .then(res => { dataFileId = res.result.id; try { localStorage.setItem('vc_dataFileId', dataFileId); } catch(e){}; 
-                // upload initial content (local)
-                uploadFileContent(dataFileId, JSON.stringify(allData || {})).then(() => saveToLocalBackup()).catch(() => {});
-                updateUiOnLogin();
-            }).catch(err => {
-                console.warn('Could not create Drive file', err);
-                updateUiOnLogin(true);
-            });
+          gapi.client.drive.files.create({
+            resource: { name: DATA_FILENAME, mimeType: 'application/json' },
+            fields: 'id'
+          }).then(res => {
+            dataFileId = res.result.id;
+            localStorage.setItem('vc_dataFileId', dataFileId);
+            uploadFile(JSON.stringify(allData || {}));
+          }).catch(err => console.warn('Drive create error', err));
         }
 
-        async function uploadFileContent(fileId, contentString) {
-            const blob = new Blob([contentString], { type: 'application/json' });
-            const form = new FormData();
-            form.append('metadata', new Blob([JSON.stringify({ mimeType: 'application/json' })], { type: 'application/json' }));
-            form.append('file', blob);
-
-            const token = gapi.client.getToken && gapi.client.getToken().access_token;
-            if (!token) throw new Error('No access token');
-
-            const res = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart`, {
-                method: 'PATCH',
-                headers: { 'Authorization': `Bearer ${token}` },
-                body: form
-            });
-            if (!res.ok) throw new Error('Upload failed: ' + res.statusText);
-            return res;
+        async function uploadFile(content) {
+          if (!accessToken || !dataFileId) return;
+          const blob = new Blob([content], { type: 'application/json' });
+          const form = new FormData();
+          form.append('metadata', new Blob([JSON.stringify({ mimeType: 'application/json' })], { type: 'application/json' }));
+          form.append('file', blob);
+          await fetch(`https://www.googleapis.com/upload/drive/v3/files/${dataFileId}?uploadType=multipart`, {
+            method: 'PATCH',
+            headers: { 'Authorization': `Bearer ${accessToken}` },
+            body: form
+          }).catch(err => console.warn('Drive upload error', err));
         }
 
         async function saveDataFile() {
-            // Always keep a local backup first
-            saveToLocalBackup();
-
-            if (!dataFileId) {
-                // try to create if authorized
-                const token = gapi.client.getToken && gapi.client.getToken().access_token;
-                if (token) {
-                    try { createFile(); } catch(e) { console.warn(e); }
-                } else {
-                    console.warn('No dataFileId and no token - saved locally only.');
-                }
-                return;
-            }
-            const token = gapi.client.getToken && gapi.client.getToken().access_token;
-            if (!token) {
-                console.warn('No access token, saved locally only.');
-                return;
-            }
-            const content = JSON.stringify(allData || {});
-            try {
-                await uploadFileContent(dataFileId, content);
-            } catch (err) {
-                console.warn('Drive save failed, will keep local backup. Error:', err);
-            }
+          saveToLocalBackup();
+          await uploadFile(JSON.stringify(allData || {}));
         }
 
-        // beforeunload best-effort save
-        window.addEventListener('beforeunload', (e) => {
-            saveToLocalBackup();
-            // try sendBeacon (best-effort) — only for local backup; Drive upload via sendBeacon not reliable for auth
-        });
-
-        // ------------------ UI helpers -----------------
-        function showScreen(screen) {
-            homeScreen.style.display = screen === 'home' ? 'block' : 'none';
-            detailsScreen.style.display = screen === 'details' ? 'block' : 'none';
+        // UI helpers & entries logic
+        function showScreen(s) { homeScreen.style.display = s==='home'?'block':'none'; detailsScreen.style.display = s==='details'?'block':'none'; }
+        function showDetailsScreen(name) {
+          currentBookName = name;
+          bookTitle.textContent = name;
+          const now = new Date();
+          dateInput.value = now.toISOString().slice(0,10);
+          timeInput.value = now.toTimeString().slice(0,5);
+          renderEntries();
+          showScreen('details');
         }
 
-        function showDetailsScreen(bookName) {
-            currentBookName = bookName;
-            bookTitle.textContent = bookName;
-            const now = new Date();
-            dateInput.value = now.toISOString().slice(0, 10);
-            timeInput.value = now.toTimeString().slice(0, 5);
-            renderEntries();
-            showScreen('details');
-        }
+        backButton.onclick = () => {
+          editingEntryId = null;
+          showScreen('home');
+          renderBookList();
+        };
 
-        backButton.addEventListener('click', () => {
-            editingEntryId = null;
-            showScreen('home');
-            renderBookList();
-        });
-
-        function updateUiOnLogin(localOnly = false) {
-            gIdSignin.style.display = 'none';
-            signoutButton.style.display = 'block';
-            userInfo.style.display = 'block';
-            userInfo.textContent = localOnly ? 'Signed in (local data)' : 'Signed in';
-            appContainer.style.display = 'block';
-            showScreen('home');
-            renderBookList();
-        }
-
-        function updateUiOnLogout() {
-            gIdSignin.style.display = 'block';
-            signoutButton.style.display = 'none';
-            userInfo.style.display = 'none';
-            appContainer.style.display = 'none';
-            // Keep allData in localStorage so user doesn't lose data when they sign out
-            // allData = {}; dataFileId = null; // don't clear local backup
-        }
-
-        // ------------------ Book list + balance display -----------------
-        function computeBookTotals(bookName) {
-            const entries = (allData[bookName] || []);
-            let totalIn = 0, totalOut = 0;
-            entries.forEach(e => {
-                if (e.type === 'in') totalIn += Number(e.amount || 0);
-                else totalOut += Number(e.amount || 0);
-            });
-            return { totalIn, totalOut, net: totalIn - totalOut };
+        function computeBookTotals(name) {
+          const arr = allData[name] || [];
+          let ti = 0, to = 0;
+          arr.forEach(e => {
+            if (e.type === 'in') ti += +e.amount;
+            else to += +e.amount;
+          });
+          return { totalIn: ti, totalOut: to, net: ti - to };
         }
 
         function renderBookList() {
-            bookList.innerHTML = '';
-            Object.keys(allData).forEach(bookName => {
-                const bookDiv = document.createElement('div');
-                bookDiv.className = 'book-item';
+          bookList.innerHTML = '';
+          Object.keys(allData).forEach(name => {
+            const div = document.createElement('div');
+            div.className = 'book-item';
+            const span = document.createElement('div');
+            span.className = 'book-name';
+            span.onclick = () => showDetailsScreen(name);
 
-                // Name + balance
-                const nameSpan = document.createElement('div');
-                nameSpan.className = 'book-name';
-                nameSpan.onclick = () => showDetailsScreen(bookName);
+            const title = document.createElement('span');
+            title.textContent = name;
 
-                const title = document.createElement('span');
-                title.textContent = bookName;
-                title.style.cursor = 'pointer';
+            const totals = computeBookTotals(name);
+            const badge = document.createElement('span');
+            badge.className = 'balance-badge '+(totals.net>=0?'balance-positive':'balance-negative');
+            badge.textContent = (totals.net>=0?'+ ':'- ')+Math.abs(totals.net).toFixed(2);
+            badge.title = 'Net balance';
 
-                const totals = computeBookTotals(bookName);
-                const balanceBadge = document.createElement('span');
-                balanceBadge.className = 'balance-badge ' + (totals.net >= 0 ? 'balance-positive' : 'balance-negative');
-                balanceBadge.textContent = (totals.net >= 0 ? '+ ' : '- ') + Math.abs(totals.net).toFixed(2);
-                balanceBadge.title = 'Net balance';
+            span.append(title, badge);
 
-                nameSpan.appendChild(title);
-                nameSpan.appendChild(balanceBadge);
-
-                // Delete button
-                const deleteBtn = document.createElement('button');
-                deleteBtn.textContent = 'Delete';
-                deleteBtn.className = 'book-delete-btn';
-                deleteBtn.onclick = (e) => {
-                    e.stopPropagation();
-                    deleteBook(bookName);
-                };
-
-                bookDiv.appendChild(nameSpan);
-                bookDiv.appendChild(deleteBtn);
-                bookList.appendChild(bookDiv);
-            });
-
-            // If no books, show hint
-            if (Object.keys(allData).length === 0) {
-                bookList.innerHTML = '<div style="margin-top:12px; color:#666;">No cashbooks yet. Create one above to start tracking.</div>';
-            }
-        }
-
-        function deleteBook(bookName) {
-            const confirmation = prompt(`This action cannot be undone.\nTo permanently delete the cashbook "${bookName}", please type its name below:`);
-            if (confirmation === null) return;
-            if (confirmation.trim() === bookName) {
-                delete allData[bookName];
+            const delBtn = document.createElement('button');
+            delBtn.textContent = 'Delete';
+            delBtn.className = 'book-delete-btn';
+            delBtn.onclick = (e) => {
+              e.stopPropagation();
+              const confirmDel = prompt(`Type the book name "${name}" to confirm deletion:`);
+              if (confirmDel === name) {
+                delete allData[name];
                 saveToLocalBackup();
                 saveDataFile();
                 renderBookList();
-                alert(`Cashbook "${bookName}" has been deleted.`);
-            } else {
-                alert('The name you entered did not match. Deletion cancelled.');
-            }
+                alert(`Book "${name}" deleted.`);
+              } else {
+                alert('Deletion cancelled.');
+              }
+            };
+
+            div.append(span, delBtn);
+            bookList.append(div);
+          });
+          if (Object.keys(allData).length === 0) {
+            bookList.innerHTML = '<div style="margin-top:12px;color:#666;">No cashbooks yet. Create one above to start tracking.</div>';
+          }
         }
 
-        addBookForm.addEventListener('submit', e => {
-            e.preventDefault();
-            const newBookName = newBookNameInput.value.trim();
-            if (newBookName && !allData[newBookName]) {
-                allData[newBookName] = [];
-                newBookNameInput.value = '';
-                renderBookList();
-                saveToLocalBackup();
-                saveDataFile();
-            } else { alert('Book name already exists or is invalid.'); }
-        });
-
-        // ------------------ Entries: add / render / delete / edit -----------------
-        function addEntry(type){
-            const amount = parseFloat(amountInput.value);
-            if (!currentBookName) return alert('Select a book first.');
-            if (isNaN(amount) || amount <= 0) return alert('Enter a valid amount.');
-            if (remarkInput.value.trim() === '') return alert('Enter details/remark.');
-            const dateVal = dateInput.value || new Date().toISOString().slice(0, 10);
-            const timeVal = timeInput.value || new Date().toTimeString().slice(0, 5);
-            const newEntry = { id: Date.now() + Math.random(), date: `${dateVal} ${timeVal}`, remark: remarkInput.value.trim(), mode: modeInput.value, amount: Number(amount), type };
-            if (!allData[currentBookName]) allData[currentBookName] = [];
-            allData[currentBookName].push(newEntry);
-            renderEntries();
-            saveToLocalBackup();
-            saveDataFile();
-            amountInput.value = ''; remarkInput.value = '';
-        }
-
-        function renderEntries(){
-            if (!currentBookName) return;
-            const originalEntries = allData[currentBookName] || [];
-            const entries = originalEntries.slice().sort((a, b) => new Date(a.date) - new Date(b.date));
-            let totalIn = 0, totalOut = 0;
-            const runningBalances = [];
-            let running = 0;
-            entries.forEach(e => {
-                if (e.type === 'in') totalIn += Number(e.amount || 0);
-                else totalOut += Number(e.amount || 0);
-                running += (e.type === 'in' ? Number(e.amount || 0) : -Number(e.amount || 0));
-                runningBalances.push(running);
-            });
-
-            entryList.innerHTML = '';
-            for(let i = entries.length - 1; i >= 0; i--) {
-                const e = entries[i];
-                const bal = runningBalances[i];
-                const row = entryList.insertRow();
-                row.insertCell(0).textContent = new Date(e.date).toLocaleString();
-                row.insertCell(1).textContent = e.remark;
-                row.insertCell(2).textContent = e.mode;
-                const ci = row.insertCell(3), co = row.insertCell(4);
-                if (e.type === 'in') { ci.textContent = Number(e.amount).toFixed(2); ci.className = 'cash-in'; co.textContent = '-'; }
-                else { co.textContent = Number(e.amount).toFixed(2); co.className = 'cash-out'; ci.textContent = '-'; }
-                row.insertCell(5).textContent = bal.toFixed(2);
-                const actionsCell = row.insertCell(6);
-
-                // Edit button
-                const editBtn = document.createElement('button');
-                editBtn.textContent = 'Edit';
-                editBtn.className = 'small';
-                editBtn.onclick = () => openEditModal(e.id);
-
-                // Delete button
-                const delBtn = document.createElement('button');
-                delBtn.textContent = 'X';
-                delBtn.className = 'delete-btn';
-                delBtn.onclick = () => {
-                    if (confirm('Are you sure you want to delete this entry?')) {
-                        const idx = allData[currentBookName].findIndex(x => x.id === e.id);
-                        if (idx > -1) { allData[currentBookName].splice(idx, 1); renderEntries(); saveToLocalBackup(); saveDataFile(); }
-                    }
-                };
-
-                actionsCell.appendChild(editBtn);
-                actionsCell.appendChild(delBtn);
-            }
-            totalInDisplay.textContent = totalIn.toFixed(2);
-            totalOutDisplay.textContent = totalOut.toFixed(2);
-            netBalanceDisplay.textContent = (totalIn - totalOut).toFixed(2);
-
-            // Also update home list balances live
+        addBookForm.onsubmit = e => {
+          e.preventDefault();
+          const n = newBookNameInput.value.trim();
+          if (n && !allData[n]) {
+            allData[n] = [];
+            newBookNameInput.value = '';
             renderBookList();
-        }
-
-        cashInButton.addEventListener('click', () => addEntry('in'));
-        cashOutButton.addEventListener('click', () => addEntry('out'));
-
-        // ------------------ Edit modal logic -----------------
-        function openEditModal(entryId) {
-            const entry = (allData[currentBookName] || []).find(x => x.id === entryId);
-            if (!entry) return alert('Entry not found');
-            editingEntryId = entryId;
-            // populate modal
-            const [d,t] = entry.date.split(' ');
-            editDate.value = d;
-            editTime.value = t || '00:00';
-            editMode.value = entry.mode || 'Cash';
-            editAmount.value = entry.amount;
-            editRemark.value = entry.remark;
-            editModal.style.display = 'flex';
-        }
-        cancelEdit.addEventListener('click', () => { editingEntryId = null; editModal.style.display = 'none'; });
-        saveEdit.addEventListener('click', () => {
-            if (!editingEntryId) return;
-            const amount = parseFloat(editAmount.value);
-            if (isNaN(amount) || amount <= 0) return alert('Enter a valid amount.');
-            if (editRemark.value.trim() === '') return alert('Enter details/remark.');
-
-            const entry = (allData[currentBookName] || []).find(x => x.id === editingEntryId);
-            if (!entry) return alert('Entry not found (maybe deleted)');
-
-            entry.date = `${editDate.value} ${editTime.value}`;
-            entry.mode = editMode.value;
-            entry.amount = Number(amount);
-            entry.remark = editRemark.value.trim();
-
-            editingEntryId = null;
-            editModal.style.display = 'none';
-            renderEntries();
             saveToLocalBackup();
             saveDataFile();
-        });
+          } else {
+            alert('Book name already exists or is invalid.');
+          }
+        };
 
-        // ------------------ PDF export (unchanged but uses current computed order) -----------------
-        exportPdfButton.addEventListener('click', () => {
-            const originalEntries = allData[currentBookName] || [];
-            if (!originalEntries || originalEntries.length === 0) {
-                return alert('No entries to export!');
-            }
+        function addEntry(type) {
+          const a = parseFloat(amountInput.value);
+          if (!currentBookName) return alert('Select a book first.');
+          if (isNaN(a) || a <= 0) return alert('Enter a valid amount.');
+          if (!remarkInput.value.trim()) return alert('Enter remark.');
+          const d = dateInput.value || new Date().toISOString().slice(0,10);
+          const t = timeInput.value || new Date().toTimeString().slice(0,5);
+          const entry = { id: Date.now()+Math.random(), date:`${d} ${t}`, remark: remarkInput.value.trim(), mode: modeInput.value, amount: a, type };
+          allData[currentBookName].push(entry);
+          renderEntries();
+          saveToLocalBackup();
+          saveDataFile();
+          amountInput.value = '';
+          remarkInput.value = '';
+        }
 
-            const entries = originalEntries.slice().sort((a, b) => new Date(a.date) - new Date(b.date));
+        cashInButton.onclick = () => addEntry('in');
+        cashOutButton.onclick = () => addEntry('out');
 
-            let running = 0, totalIn = 0, totalOut = 0;
-            const calculatedRows = entries.map(e => {
-                if (e.type === 'in') { totalIn += Number(e.amount || 0); running += Number(e.amount || 0); } 
-                else { totalOut += Number(e.amount || 0); running -= Number(e.amount || 0); }
-                return {
-                    date: new Date(e.date).toLocaleString(), remark: e.remark, mode: e.mode,
-                    cashIn: e.type === 'in' ? Number(e.amount).toFixed(2) : '-',
-                    cashOut: e.type === 'out' ? Number(e.amount).toFixed(2) : '-',
-                    balance: running.toFixed(2)
-                };
-            });
+        function renderEntries() {
+          if (!currentBookName) return;
+          const arr = allData[currentBookName] || [];
+          const sorted = arr.slice().sort((a,b) => new Date(a.date) - new Date(b.date));
+          let ti=0,to=0,run=0;
+          entryList.innerHTML = '';
+          for (let e of sorted) {
+            if (e.type==='in') { ti += +e.amount; run += +e.amount; }
+            else { to += +e.amount; run -= +e.amount; }
+            const row = entryList.insertRow();
+            row.insertCell(0).textContent = new Date(e.date).toLocaleString();
+            row.insertCell(1).textContent = e.remark;
+            row.insertCell(2).textContent = e.mode;
+            const ci = row.insertCell(3), co = row.insertCell(4);
+            if (e.type==='in') { ci.textContent = e.amount.toFixed(2); ci.className = 'cash-in'; co.textContent = '-'; }
+            else { co.textContent = e.amount.toFixed(2); co.className = 'cash-out'; ci.textContent = '-'; }
+            row.insertCell(5).textContent = run.toFixed(2);
+            const act = row.insertCell(6);
+            const eb = document.createElement('button');
+            eb.textContent = 'Edit';
+            eb.className = 'small';
+            eb.onclick = () => openEditModal(e.id);
+            const db = document.createElement('button');
+            db.textContent = 'X';
+            db.className = 'delete-btn';
+            db.onclick = () => {
+              if (confirm('Delete this entry?')) {
+                const idx = allData[currentBookName].findIndex(x=>x.id===e.id);
+                if (idx > -1) {
+                  allData[currentBookName].splice(idx,1);
+                  renderEntries();
+                  saveToLocalBackup();
+                  saveDataFile();
+                }
+              }
+            };
+            act.append(eb, db);
+          }
+          totalInDisplay.textContent = ti.toFixed(2);
+          totalOutDisplay.textContent = to.toFixed(2);
+          netBalanceDisplay.textContent = (ti - to).toFixed(2);
+          renderBookList();
+        }
 
-            const rowsForPdf = calculatedRows.slice().reverse();
-            const tableBody = rowsForPdf.map(r => [r.date, r.remark, r.mode, r.cashIn, r.cashOut, r.balance]);
+        function openEditModal(id) {
+          const e = (allData[currentBookName]||[]).find(x=>x.id===id);
+          if (!e) return alert('Entry not found');
+          editingEntryId = id;
+          const parts = e.date.split(' ');
+          editDate.value = parts[0];
+          editTime.value = parts[1] || '00:00';
+          editMode.value = e.mode;
+          editAmount.value = e.amount;
+          editRemark.value = e.remark;
+          editModal.style.display = 'flex';
+        }
+        cancelEdit.onclick = () => { editingEntryId = null; editModal.style.display = 'none'; };
+        saveEdit.onclick = () => {
+          if (!editingEntryId) return;
+          const a = parseFloat(editAmount.value);
+          if (isNaN(a) || a <= 0) return alert('Enter valid amount.');
+          if (!editRemark.value.trim()) return alert('Enter remark.');
+          const e = (allData[currentBookName]||[]).find(x=>x.id===editingEntryId);
+          if (!e) return alert('Entry not found');
+          e.date = `${editDate.value} ${editTime.value}`;
+          e.mode = editMode.value;
+          e.amount = a;
+          e.remark = editRemark.value.trim();
+          editingEntryId = null;
+          editModal.style.display = 'none';
+          renderEntries();
+          saveToLocalBackup();
+          saveDataFile();
+        };
 
-            const { jsPDF } = window.jspdf;
-            const doc = new jsPDF('p', 'mm', 'a4');
-            doc.setFont('helvetica');
+        // Export PDF logic (same as before)
+        exportPdfButton.onclick = () => {
+          const arr = allData[currentBookName] || [];
+          if (!arr.length) return alert('No entries to export!');
+          const sorted = arr.slice().sort((a,b) => new Date(a.date) - new Date(b.date));
+          let run=0, ti=0, to=0;
+          const rows = sorted.map(e => {
+            if (e.type==='in') { ti += +e.amount; run += +e.amount; }
+            else { to += +e.amount; run -= +e.amount; }
+            return {
+              date: new Date(e.date).toLocaleString(),
+              remark: e.remark,
+              mode: e.mode,
+              cashIn: e.type==='in'?e.amount.toFixed(2):'-',
+              cashOut: e.type==='out'?e.amount.toFixed(2):'-',
+              balance: run.toFixed(2)
+            };
+          });
+          const body = rows.slice().reverse().map(r => [r.date,r.remark,r.mode,r.cashIn,r.cashOut,r.balance]);
+          const { jsPDF } = window.jspdf;
+          const doc = new jsPDF('p','mm','a4');
+          doc.setFont('helvetica');
+          const pageWidth = doc.internal.pageSize.getWidth();
+          const margin = 10;
+          doc.setFillColor(0,38,77); doc.rect(0,0,pageWidth,12,'F');
+          doc.setTextColor(255,255,255); doc.setFontSize(16);
+          doc.text("VishClick : Design Studio", pageWidth/2, 8, { align: 'center' });
+          doc.setFillColor(230,230,250); doc.rect(0,12,pageWidth,10,'F');
+          doc.setTextColor(0); doc.setFontSize(12); doc.setFont(undefined,'bold');
+          doc.text(`Book: ${currentBookName}`, pageWidth/2, 19, { align: 'center' });
+          const totalWidth=60, gap=5, totalsY=30, totalStartX=20;
+          doc.setFontSize(9); doc.setFont(undefined,'bold');
+          doc.setFillColor(220,255,220); doc.rect(totalStartX, totalsY, totalWidth,8,'F');
+          doc.setTextColor(0,128,0); doc.text(`Total In: ${ti.toFixed(2)}`, totalStartX+3, totalsY+6);
+          doc.setFillColor(255,220,220); doc.rect(totalStartX+totalWidth+gap, totalsY, totalWidth,8,'F');
+          doc.setTextColor(220,0,0); doc.text(`Total Out: ${to.toFixed(2)}`, totalStartX+totalWidth+gap+3, totalsY+6);
+          doc.setFillColor(220,220,255); doc.rect(totalStartX+(totalWidth+gap)*2, totalsY, totalWidth,8,'F');
+          doc.setTextColor(75,0,130); doc.text(`Net Balance: ${(ti-to).toFixed(2)}`, totalStartX+(totalWidth+gap)*2+3, totalsY+6);
+          doc.autoTable({
+            head:[['Date','Remark','Mode','Cash In','Cash Out','Balance']],
+            body: body,
+            startY: totalsY+14,
+            margin:{left: margin, right: margin},
+            styles:{fontSize:9,cellPadding:2.5},
+            headStyles:{fillColor:[41,128,185], textColor:255, halign:'center'},
+            columnStyles:{0:{cellWidth:35},1:{cellWidth:'auto'},2:{cellWidth:20, halign:'center'},
+              3:{cellWidth:22,halign:'right',textColor:[0,128,0]},
+              4:{cellWidth:22,halign:'right',textColor:[220,0,0]},
+              5:{cellWidth:22,halign:'right'}
+            },
+            theme:'grid'
+          });
+          doc.save(`${currentBookName}-report.pdf`);
+        };
 
-            const pageWidth = doc.internal.pageSize.getWidth();
-            const margin = 10;
-
-            doc.setFillColor(0, 38, 77); doc.rect(0, 0, pageWidth, 12, 'F');
-            doc.setTextColor(255, 255, 255); doc.setFontSize(16);
-            doc.text("VishClick : Design Studio", pageWidth / 2, 8, { align: 'center' });
-
-            doc.setFillColor(230, 230, 250); doc.rect(0, 12, pageWidth, 10, 'F');
-            doc.setTextColor(0); doc.setFontSize(12); doc.setFont(undefined, 'bold');
-            doc.text(`Book: ${currentBookName}`, pageWidth / 2, 19, { align: 'center' });
-
-            const totalWidth = 60, gap = 5, totalsY = 30, totalStartX = 20;
-            doc.setFontSize(9); doc.setFont(undefined, 'bold');
-            doc.setFillColor(220, 255, 220); doc.rect(totalStartX, totalsY, totalWidth, 8, 'F');
-            doc.setTextColor(0, 128, 0); doc.text(`Total In: ${totalIn.toFixed(2)}`, totalStartX + 3, totalsY + 6);
-            doc.setFillColor(255, 220, 220); doc.rect(totalStartX + totalWidth + gap, totalsY, totalWidth, 8, 'F');
-            doc.setTextColor(220, 0, 0); doc.text(`Total Out: ${totalOut.toFixed(2)}`, totalStartX + totalWidth + gap + 3, totalsY + 6);
-            doc.setFillColor(220, 220, 255); doc.rect(totalStartX + (totalWidth + gap) * 2, totalsY, totalWidth, 8, 'F');
-            doc.setTextColor(75, 0, 130); doc.text(`Net Balance: ${(totalIn - totalOut).toFixed(2)}`, totalStartX + (totalWidth + gap) * 2 + 3, totalsY + 6);
-            
-            doc.autoTable({
-                head: [['Date', 'Remark', 'Mode', 'Cash In', 'Cash Out', 'Balance']], body: tableBody,
-                startY: totalsY + 14, margin: { left: margin, right: margin }, styles: { fontSize: 9, cellPadding: 2.5 },
-                headStyles: { fillColor: [41, 128, 185], textColor: 255, halign: 'center' },
-                columnStyles: {
-                    0: { cellWidth: 35 }, 1: { cellWidth: 'auto' }, 2: { cellWidth: 20, halign: 'center' },
-                    3: { cellWidth: 22, halign: 'right', textColor: [0, 128, 0] },
-                    4: { cellWidth: 22, halign: 'right', textColor: [220, 0, 0] },
-                    5: { cellWidth: 22, halign: 'right' }
-                }, theme: 'grid'
-            });
-            doc.save(`${currentBookName}-report.pdf`);
-        });
-
-        // Initial render if local data present
-        renderBookList();
     </script>
 </body>
 </html>
