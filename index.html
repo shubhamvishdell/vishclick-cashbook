@@ -17,7 +17,7 @@
         input, select { box-sizing: border-box; padding: 10px; border-radius: 8px; border: 1px solid #ccc; width: 100%; margin-bottom: 10px; font-size: 14px; }
         .book-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 15px; border: 1px solid #eee; margin-top: 8px; border-radius: 8px; }
         .book-item:hover { background-color: #f9f9f9; }
-        .book-name { flex-grow: 1; cursor: pointer; }
+        .book-name { flex-grow: 1; cursor: pointer; display:flex; align-items:center; gap:10px; }
         .book-delete-btn { background-color: #ffeded; color: #dc3545; border: 1px solid #ffb8b8; padding: 6px 12px; font-size: 12px; margin-left: 15px; }
         .book-delete-btn:hover { background-color: #dc3545; color: white; }
         .delete-btn { color: red; cursor: pointer; border: none; background: none; font-size: 1.1em; padding: 0 8px; }
@@ -27,6 +27,15 @@
         table { border-collapse: collapse; width: 100%; margin-top: 15px; }
         th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
         th { background-color: #f2f2f2; }
+        .balance-badge { padding: 6px 10px; border-radius: 8px; font-weight: bold; }
+        .balance-positive { background: #e6ffec; color: #0b7a3a; border: 1px solid #c8f1d1; }
+        .balance-negative { background: #fff0f0; color: #a00; border: 1px solid #f2c7c7; }
+        /* Edit modal (keeps UI minimal) */
+        #editModal { position: fixed; left: 0; top:0; right:0; bottom:0; display:none; align-items:center; justify-content:center; background: rgba(0,0,0,0.4); z-index: 9999; }
+        #editModal .card { width: 420px; background: #fff; padding: 16px; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); }
+        #editModal h4 { margin: 0 0 8px 0; }
+        .small { font-size: 12px; padding:6px 8px; border-radius:6px; }
+        .inline-btns { display:flex; gap:8px; align-items:center; }
     </style>
 </head>
 <body>
@@ -60,8 +69,10 @@
                 </select>
                 <input type="number" id="amountInput" placeholder="Amount (₹)" required>
                 <input type="text" id="remarkInput" placeholder="Enter details" required>
-                <button type="button" id="cashInButton">CASH IN</button>
-                <button type="button" id="cashOutButton">CASH OUT</button>
+                <div class="inline-btns">
+                    <button type="button" id="cashInButton">CASH IN</button>
+                    <button type="button" id="cashOutButton">CASH OUT</button>
+                </div>
             </form>
             <hr>
             <div id="summary">
@@ -73,10 +84,31 @@
             <h3>Entries</h3>
             <table>
                 <thead>
-                    <tr><th>Date</th><th>Remark</th><th>Mode</th><th>Cash In</th><th>Cash Out</th><th>Balance</th><th></th></tr>
+                    <tr><th>Date</th><th>Remark</th><th>Mode</th><th>Cash In</th><th>Cash Out</th><th>Balance</th><th>Actions</th></tr>
                 </thead>
                 <tbody id="entryList"></tbody>
             </table>
+        </div>
+    </div>
+
+    <!-- Edit modal -->
+    <div id="editModal">
+        <div class="card">
+            <h4>Edit Entry</h4>
+            <label>Date</label>
+            <input type="date" id="editDate">
+            <label>Time</label>
+            <input type="time" id="editTime">
+            <label>Mode</label>
+            <select id="editMode"><option>Cash</option><option>Online</option></select>
+            <label>Amount (₹)</label>
+            <input type="number" id="editAmount">
+            <label>Remark</label>
+            <input type="text" id="editRemark">
+            <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
+                <button id="cancelEdit" class="small">Cancel</button>
+                <button id="saveEdit" class="small">Save</button>
+            </div>
         </div>
     </div>
 
@@ -85,7 +117,7 @@
         const SCOPES = 'https://www.googleapis.com/auth/drive.file';
         const DATA_FILENAME = 'vishclick-cashbook-data.json';
 
-        // All DOM element references
+        // DOM references
         const gIdSignin = document.getElementById('g_id_signin');
         const appContainer = document.getElementById('app-container');
         const homeScreen = document.getElementById('homeScreen');
@@ -110,13 +142,49 @@
         const entryList = document.getElementById('entryList');
         const exportPdfButton = document.getElementById('exportPdfButton');
 
+        // Edit modal elements
+        const editModal = document.getElementById('editModal');
+        const editDate = document.getElementById('editDate');
+        const editTime = document.getElementById('editTime');
+        const editMode = document.getElementById('editMode');
+        const editAmount = document.getElementById('editAmount');
+        const editRemark = document.getElementById('editRemark');
+        const saveEdit = document.getElementById('saveEdit');
+        const cancelEdit = document.getElementById('cancelEdit');
+
         let tokenClient, allData = {}, dataFileId = null, currentBookName = null;
+        // For editing
+        let editingEntryId = null;
+
+        // ------------------ local backup helpers -----------------
+        function saveToLocalBackup() {
+            try {
+                localStorage.setItem('vc_allData', JSON.stringify(allData || {}));
+                if (dataFileId) localStorage.setItem('vc_dataFileId', dataFileId);
+            } catch (e) { console.warn('Local backup failed', e); }
+        }
+        function loadFromLocalBackup() {
+            try {
+                const t = localStorage.getItem('vc_allData');
+                const id = localStorage.getItem('vc_dataFileId');
+                if (t) {
+                    allData = JSON.parse(t) || {};
+                }
+                if (id) dataFileId = id;
+            } catch (e) { console.warn('Failed to load local backup', e); }
+        }
+        // Load early for instant UI on refresh
+        loadFromLocalBackup();
 
         window.onload = function() {
             if (window.google && google.accounts && google.accounts.id) {
                 google.accounts.id.initialize({ client_id: CLIENT_ID, callback: handleCredentialResponse });
                 google.accounts.id.renderButton(gIdSignin, { theme: 'outline', size: 'large' });
                 tokenClient = google.accounts.oauth2.initTokenClient({ client_id: CLIENT_ID, scope: SCOPES, callback: handleTokenResponse });
+            }
+            // If local data exists, show UI quickly (user still needs to sign in for Drive)
+            if (Object.keys(allData).length > 0) {
+                updateUiOnLogin(true); // local-only render
             }
         };
 
@@ -136,46 +204,133 @@
                 gapi.client.load('drive', 'v3', findDataFile);
             }).catch(err => { console.warn(err); });
         }
-        
-        signoutButton.addEventListener('click', () => {
-            if (dataFileId) saveDataFile(); 
+
+        signoutButton.addEventListener('click', async () => {
+            // Save locally before sign out
+            saveToLocalBackup();
+            // Try to save to Drive (best-effort)
+            if (dataFileId) await saveDataFile();
             if (google && google.accounts && google.accounts.id) google.accounts.id.disableAutoSelect();
             updateUiOnLogout();
         });
 
+        // ------------------ Drive handling (safer) -----------------
         function findDataFile() {
-            gapi.client.drive.files.list({
-                q: `name='${DATA_FILENAME}' and trashed=false`, fields: 'files(id)', spaces: 'drive'
-            }).then(res => {
-                if (res.result.files.length > 0) { dataFileId = res.result.files[0].id; readFile(dataFileId); } 
-                else { createFile(); }
-            }).catch(() => { createFile(); });
+            // Try stored ID first
+            if (dataFileId) {
+                gapi.client.drive.files.get({ fileId: dataFileId, fields: 'id,name' })
+                .then(() => { readFile(dataFileId); })
+                .catch(err => {
+                    console.warn('Stored fileId invalid or inaccessible, falling back to search.', err);
+                    listFilesByName();
+                });
+            } else {
+                listFilesByName();
+            }
+
+            function listFilesByName() {
+                gapi.client.drive.files.list({
+                    q: `name='${DATA_FILENAME}' and trashed=false`,
+                    fields: 'files(id,name)', spaces: 'drive'
+                }).then(res => {
+                    if (res.result.files && res.result.files.length > 0) {
+                        dataFileId = res.result.files[0].id;
+                        try { localStorage.setItem('vc_dataFileId', dataFileId); } catch(e) {}
+                        readFile(dataFileId);
+                    } else {
+                        // create file but initialize with local backup if available
+                        createFile();
+                    }
+                }).catch(err => {
+                    console.warn('Error listing files, will try to use local backup only.', err);
+                    updateUiOnLogin(true);
+                });
+            }
         }
 
         function readFile(fileId) {
-            gapi.client.drive.files.get({ fileId, alt: 'media' }).then(res => { allData = res.result || {}; updateUiOnLogin(); })
-            .catch(() => { allData = {}; updateUiOnLogin(); });
-        }
-        
-        function createFile() {
-            gapi.client.drive.files.create({ resource: { name: DATA_FILENAME, mimeType: 'application/json' }, fields: 'id' })
-            .then(res => { dataFileId = res.result.id; allData={}; saveDataFile(); updateUiOnLogin(); });
-        }
-
-        async function saveDataFile() {
-            if (!dataFileId) return;
-            const content = JSON.stringify(allData);
-            const blob = new Blob([content], { type: 'application/json' });
-            const form = new FormData();
-            form.append('metadata', new Blob([JSON.stringify({ mimeType: 'application/json' })], { type: 'application/json' }));
-            form.append('file', blob);
-            await fetch(`https://www.googleapis.com/upload/drive/v3/files/${dataFileId}?uploadType=multipart`, {
-                method: 'PATCH',
-                headers: { 'Authorization': `Bearer ${gapi.client.getToken().access_token}` },
-                body: form
+            gapi.client.drive.files.get({ fileId, alt: 'media' }).then(res => {
+                try {
+                    // some gapi versions put data in res.result or res.body
+                    const parsed = res.result || (res.body ? JSON.parse(res.body) : null);
+                    if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) allData = parsed;
+                } catch (e) {
+                    console.warn('Failed parsing drive file content, using local backup if available', e);
+                }
+                saveToLocalBackup();
+                updateUiOnLogin();
+            }).catch(err => {
+                console.warn('Failed to read file from Drive, using local backup', err);
+                loadFromLocalBackup();
+                updateUiOnLogin(true);
             });
         }
 
+        function createFile() {
+            // create empty or with local content
+            gapi.client.drive.files.create({ resource: { name: DATA_FILENAME, mimeType: 'application/json' }, fields: 'id' })
+            .then(res => { dataFileId = res.result.id; try { localStorage.setItem('vc_dataFileId', dataFileId); } catch(e){}; 
+                // upload initial content (local)
+                uploadFileContent(dataFileId, JSON.stringify(allData || {})).then(() => saveToLocalBackup()).catch(() => {});
+                updateUiOnLogin();
+            }).catch(err => {
+                console.warn('Could not create Drive file', err);
+                updateUiOnLogin(true);
+            });
+        }
+
+        async function uploadFileContent(fileId, contentString) {
+            const blob = new Blob([contentString], { type: 'application/json' });
+            const form = new FormData();
+            form.append('metadata', new Blob([JSON.stringify({ mimeType: 'application/json' })], { type: 'application/json' }));
+            form.append('file', blob);
+
+            const token = gapi.client.getToken && gapi.client.getToken().access_token;
+            if (!token) throw new Error('No access token');
+
+            const res = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart`, {
+                method: 'PATCH',
+                headers: { 'Authorization': `Bearer ${token}` },
+                body: form
+            });
+            if (!res.ok) throw new Error('Upload failed: ' + res.statusText);
+            return res;
+        }
+
+        async function saveDataFile() {
+            // Always keep a local backup first
+            saveToLocalBackup();
+
+            if (!dataFileId) {
+                // try to create if authorized
+                const token = gapi.client.getToken && gapi.client.getToken().access_token;
+                if (token) {
+                    try { createFile(); } catch(e) { console.warn(e); }
+                } else {
+                    console.warn('No dataFileId and no token - saved locally only.');
+                }
+                return;
+            }
+            const token = gapi.client.getToken && gapi.client.getToken().access_token;
+            if (!token) {
+                console.warn('No access token, saved locally only.');
+                return;
+            }
+            const content = JSON.stringify(allData || {});
+            try {
+                await uploadFileContent(dataFileId, content);
+            } catch (err) {
+                console.warn('Drive save failed, will keep local backup. Error:', err);
+            }
+        }
+
+        // beforeunload best-effort save
+        window.addEventListener('beforeunload', (e) => {
+            saveToLocalBackup();
+            // try sendBeacon (best-effort) — only for local backup; Drive upload via sendBeacon not reliable for auth
+        });
+
+        // ------------------ UI helpers -----------------
         function showScreen(screen) {
             homeScreen.style.display = screen === 'home' ? 'block' : 'none';
             detailsScreen.style.display = screen === 'details' ? 'block' : 'none';
@@ -191,13 +346,17 @@
             showScreen('details');
         }
 
-        backButton.addEventListener('click', () => showScreen('home'));
-        
-        function updateUiOnLogin() {
+        backButton.addEventListener('click', () => {
+            editingEntryId = null;
+            showScreen('home');
+            renderBookList();
+        });
+
+        function updateUiOnLogin(localOnly = false) {
             gIdSignin.style.display = 'none';
             signoutButton.style.display = 'block';
             userInfo.style.display = 'block';
-            userInfo.textContent = 'Signed in';
+            userInfo.textContent = localOnly ? 'Signed in (local data)' : 'Signed in';
             appContainer.style.display = 'block';
             showScreen('home');
             renderBookList();
@@ -208,55 +367,79 @@
             signoutButton.style.display = 'none';
             userInfo.style.display = 'none';
             appContainer.style.display = 'none';
-            allData = {}; dataFileId = null;
+            // Keep allData in localStorage so user doesn't lose data when they sign out
+            // allData = {}; dataFileId = null; // don't clear local backup
         }
-        
-        // --- MODIFIED: Added Delete Button ---
+
+        // ------------------ Book list + balance display -----------------
+        function computeBookTotals(bookName) {
+            const entries = (allData[bookName] || []);
+            let totalIn = 0, totalOut = 0;
+            entries.forEach(e => {
+                if (e.type === 'in') totalIn += Number(e.amount || 0);
+                else totalOut += Number(e.amount || 0);
+            });
+            return { totalIn, totalOut, net: totalIn - totalOut };
+        }
+
         function renderBookList() {
             bookList.innerHTML = '';
             Object.keys(allData).forEach(bookName => {
                 const bookDiv = document.createElement('div');
                 bookDiv.className = 'book-item';
-                
-                // Span for the book name (clickable to open)
-                const nameSpan = document.createElement('span');
-                nameSpan.textContent = bookName;
+
+                // Name + balance
+                const nameSpan = document.createElement('div');
                 nameSpan.className = 'book-name';
                 nameSpan.onclick = () => showDetailsScreen(bookName);
-                
-                // Button to delete the book
+
+                const title = document.createElement('span');
+                title.textContent = bookName;
+                title.style.cursor = 'pointer';
+
+                const totals = computeBookTotals(bookName);
+                const balanceBadge = document.createElement('span');
+                balanceBadge.className = 'balance-badge ' + (totals.net >= 0 ? 'balance-positive' : 'balance-negative');
+                balanceBadge.textContent = (totals.net >= 0 ? '+ ' : '- ') + Math.abs(totals.net).toFixed(2);
+                balanceBadge.title = 'Net balance';
+
+                nameSpan.appendChild(title);
+                nameSpan.appendChild(balanceBadge);
+
+                // Delete button
                 const deleteBtn = document.createElement('button');
                 deleteBtn.textContent = 'Delete';
                 deleteBtn.className = 'book-delete-btn';
                 deleteBtn.onclick = (e) => {
-                    e.stopPropagation(); // Prevents opening the book details
+                    e.stopPropagation();
                     deleteBook(bookName);
                 };
-                
+
                 bookDiv.appendChild(nameSpan);
                 bookDiv.appendChild(deleteBtn);
                 bookList.appendChild(bookDiv);
             });
+
+            // If no books, show hint
+            if (Object.keys(allData).length === 0) {
+                bookList.innerHTML = '<div style="margin-top:12px; color:#666;">No cashbooks yet. Create one above to start tracking.</div>';
+            }
         }
-        
-        // --- NEW: Function to Delete a Book with Confirmation ---
+
         function deleteBook(bookName) {
             const confirmation = prompt(`This action cannot be undone.\nTo permanently delete the cashbook "${bookName}", please type its name below:`);
-            
-            if (confirmation === null) { // User clicked 'Cancel'
-                return;
-            }
-
+            if (confirmation === null) return;
             if (confirmation.trim() === bookName) {
-                delete allData[bookName]; // Remove the book from data object
-                saveDataFile(); // Save the updated data to Google Drive
-                renderBookList(); // Refresh the list on the screen
+                delete allData[bookName];
+                saveToLocalBackup();
+                saveDataFile();
+                renderBookList();
                 alert(`Cashbook "${bookName}" has been deleted.`);
             } else {
                 alert('The name you entered did not match. Deletion cancelled.');
             }
         }
-        
+
         addBookForm.addEventListener('submit', e => {
             e.preventDefault();
             const newBookName = newBookNameInput.value.trim();
@@ -264,10 +447,12 @@
                 allData[newBookName] = [];
                 newBookNameInput.value = '';
                 renderBookList();
+                saveToLocalBackup();
                 saveDataFile();
             } else { alert('Book name already exists or is invalid.'); }
         });
 
+        // ------------------ Entries: add / render / delete / edit -----------------
         function addEntry(type){
             const amount = parseFloat(amountInput.value);
             if (!currentBookName) return alert('Select a book first.');
@@ -279,6 +464,7 @@
             if (!allData[currentBookName]) allData[currentBookName] = [];
             allData[currentBookName].push(newEntry);
             renderEntries();
+            saveToLocalBackup();
             saveDataFile();
             amountInput.value = ''; remarkInput.value = '';
         }
@@ -309,20 +495,76 @@
                 if (e.type === 'in') { ci.textContent = Number(e.amount).toFixed(2); ci.className = 'cash-in'; co.textContent = '-'; }
                 else { co.textContent = Number(e.amount).toFixed(2); co.className = 'cash-out'; ci.textContent = '-'; }
                 row.insertCell(5).textContent = bal.toFixed(2);
-                const del = row.insertCell(6);
-                const delBtn = document.createElement('button'); delBtn.textContent = 'X'; delBtn.className = 'delete-btn';
-                delBtn.onclick = () => { if(confirm('Are you sure you want to delete this entry?')) { const idx = allData[currentBookName].findIndex(x => x.id === e.id); if(idx > -1) { allData[currentBookName].splice(idx, 1); renderEntries(); saveDataFile(); } } };
-                del.appendChild(delBtn);
+                const actionsCell = row.insertCell(6);
+
+                // Edit button
+                const editBtn = document.createElement('button');
+                editBtn.textContent = 'Edit';
+                editBtn.className = 'small';
+                editBtn.onclick = () => openEditModal(e.id);
+
+                // Delete button
+                const delBtn = document.createElement('button');
+                delBtn.textContent = 'X';
+                delBtn.className = 'delete-btn';
+                delBtn.onclick = () => {
+                    if (confirm('Are you sure you want to delete this entry?')) {
+                        const idx = allData[currentBookName].findIndex(x => x.id === e.id);
+                        if (idx > -1) { allData[currentBookName].splice(idx, 1); renderEntries(); saveToLocalBackup(); saveDataFile(); }
+                    }
+                };
+
+                actionsCell.appendChild(editBtn);
+                actionsCell.appendChild(delBtn);
             }
             totalInDisplay.textContent = totalIn.toFixed(2);
             totalOutDisplay.textContent = totalOut.toFixed(2);
             netBalanceDisplay.textContent = (totalIn - totalOut).toFixed(2);
+
+            // Also update home list balances live
+            renderBookList();
         }
 
         cashInButton.addEventListener('click', () => addEntry('in'));
         cashOutButton.addEventListener('click', () => addEntry('out'));
 
-        // --- CORRECTED PDF EXPORT ---
+        // ------------------ Edit modal logic -----------------
+        function openEditModal(entryId) {
+            const entry = (allData[currentBookName] || []).find(x => x.id === entryId);
+            if (!entry) return alert('Entry not found');
+            editingEntryId = entryId;
+            // populate modal
+            const [d,t] = entry.date.split(' ');
+            editDate.value = d;
+            editTime.value = t || '00:00';
+            editMode.value = entry.mode || 'Cash';
+            editAmount.value = entry.amount;
+            editRemark.value = entry.remark;
+            editModal.style.display = 'flex';
+        }
+        cancelEdit.addEventListener('click', () => { editingEntryId = null; editModal.style.display = 'none'; });
+        saveEdit.addEventListener('click', () => {
+            if (!editingEntryId) return;
+            const amount = parseFloat(editAmount.value);
+            if (isNaN(amount) || amount <= 0) return alert('Enter a valid amount.');
+            if (editRemark.value.trim() === '') return alert('Enter details/remark.');
+
+            const entry = (allData[currentBookName] || []).find(x => x.id === editingEntryId);
+            if (!entry) return alert('Entry not found (maybe deleted)');
+
+            entry.date = `${editDate.value} ${editTime.value}`;
+            entry.mode = editMode.value;
+            entry.amount = Number(amount);
+            entry.remark = editRemark.value.trim();
+
+            editingEntryId = null;
+            editModal.style.display = 'none';
+            renderEntries();
+            saveToLocalBackup();
+            saveDataFile();
+        });
+
+        // ------------------ PDF export (unchanged but uses current computed order) -----------------
         exportPdfButton.addEventListener('click', () => {
             const originalEntries = allData[currentBookName] || [];
             if (!originalEntries || originalEntries.length === 0) {
@@ -383,6 +625,9 @@
             });
             doc.save(`${currentBookName}-report.pdf`);
         });
+
+        // Initial render if local data present
+        renderBookList();
     </script>
 </body>
 </html>
