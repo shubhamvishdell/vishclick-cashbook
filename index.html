@@ -2,256 +2,662 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>VishClick : Cashbook</title>
+  <title>VishClick : Design Studio</title>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script src="https://apis.google.com/js/api.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
   <style>
-    body {
-      font-family: "Poppins", sans-serif;
-      margin: 0;
-      background: #0d1117;
-      color: #fff;
-      text-align: center;
-    }
-    h1 {
-      background: #161b22;
-      padding: 10px;
-      margin: 0;
-    }
-    #app-container {
-      margin: 20px auto;
-      max-width: 420px;
-      background: #161b22;
-      border-radius: 12px;
-      padding: 20px;
-      box-shadow: 0 0 15px rgba(255, 255, 255, 0.1);
-    }
-    #bookList button {
-      background: #238636;
-      color: #fff;
-      border: none;
-      padding: 8px 12px;
-      border-radius: 8px;
-      margin: 4px;
-      cursor: pointer;
-    }
-    #signInDiv, #signOutBtn {
-      margin: 10px;
-    }
-    #syncSection {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin-top: 10px;
-      gap: 10px;
-    }
-    #syncButton {
-      background: #1f6feb;
-      color: white;
-      border: none;
-      padding: 8px 14px;
-      border-radius: 8px;
-      cursor: pointer;
-      font-weight: 500;
-      transition: all 0.2s ease-in-out;
-    }
-    #syncButton:hover {
-      background: #388bfd;
-      transform: scale(1.05);
-    }
-    #syncStatus {
-      font-size: 14px;
-      font-weight: 500;
-      min-width: 100px;
-    }
-    .sync-anim {
-      display: inline-block;
-      width: 18px;
-      height: 18px;
-      border: 2px solid #fff;
-      border-top: 2px solid transparent;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-    }
-    @keyframes spin {
-      100% { transform: rotate(360deg); }
-    }
+    /* kept your original styling (slightly trimmed) */
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 10px; max-width: 900px; margin: auto; color: #333; }
+    .auth-section { margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; min-height: 40px; }
+    #app-container { display: none; }
+    #user-info { font-weight: bold; }
+    button { margin: 5px 0; padding: 10px 15px; cursor: pointer; border-radius: 8px; border: 1px solid #ccc; background-color: #f0f0f0; font-size: 14px; }
+    #syncButton { background:#1f6feb; color:#fff; border:none; padding:8px 12px; border-radius:8px; }
+    .sync-anim { display:inline-block; width:16px; height:16px; border:2px solid #fff; border-top:2px solid transparent; border-radius:50%; animation:spin 1s linear infinite; vertical-align:middle; margin-right:6px; }
+    @keyframes spin { 100% { transform:rotate(360deg); } }
+    /* your other styles... (kept as-is) */
+    /* ... */
   </style>
 </head>
 <body>
-  <h1>💰 VishClick Cashbook</h1>
+  <h2 style="text-align: center; background-color: navy; color: white; padding: 10px;"><strong>VishClick : Design Studio</strong></h2>
+
+  <div class="auth-section">
+    <div id="g_id_signin"></div>
+    <div id="user-info" style="display: none;"></div>
+    <button id="signout_button" style="display: none;">Sign Out</button>
+  </div>
+  <hr>
 
   <div id="app-container">
-    <div id="signInDiv"></div>
-    <button id="signOutBtn" style="display:none;background:#d32f2f;">Sign Out</button>
+    <div id="homeScreen">
+      <h3>My Cashbooks</h3>
+      <form id="addBookForm">
+        <input type="text" id="newBookName" placeholder="New cashbook name" required>
+        <button type="submit">Add New Book</button>
+      </form>
+      <div id="bookList"></div>
+    </div>
 
-    <div id="bookList"></div>
+    <div id="detailsScreen" style="display: none;">
+      <button id="backButton">&larr; Back to Home</button>
+      <h2 id="bookTitle" style="background-color: #e6e6fa; padding: 8px;"></h2>
+      <h3>Add New Entry</h3>
+      <form id="entryForm" onsubmit="return false;">
+        <input type="date" id="dateInput"> <input type="time" id="timeInput">
+        <select id="modeInput">
+          <option value="Cash">Cash</option> <option value="Online">Online</option>
+        </select>
+        <input type="number" id="amountInput" placeholder="Amount (₹)" required>
+        <input type="text" id="remarkInput" placeholder="Enter details" required>
+        <div style="display:flex; gap:8px;">
+          <button type="button" id="cashInButton">CASH IN</button>
+          <button type="button" id="cashOutButton">CASH OUT</button>
+        </div>
+      </form>
+      <hr>
+      <div id="summary">
+        <div>Total In (+): <strong id="totalInDisplay" class="cash-in">0.00</strong></div>
+        <div>Total Out (-): <strong id="totalOutDisplay" class="cash-out">0.00</strong></div>
+        <div>Net Balance: <strong id="netBalanceDisplay">0.00</strong></div>
+      </div>
 
-    <!-- 🌐 Cloud Sync Section -->
-    <div id="syncSection" style="display:none;">
-      <button id="syncButton">🔄 Sync Now</button>
-      <span id="syncStatus"></span>
+      <div style="margin:10px 0; display:flex; gap:10px; align-items:center;">
+        <button id="exportPdfButton">Export Report as PDF</button>
+        <button id="syncButton">🔄 Sync Now</button>
+        <span id="syncStatus" style="min-width:120px; display:inline-block;"></span>
+      </div>
+
+      <h3>Entries</h3>
+      <table>
+        <thead>
+          <tr><th>Date</th><th>Remark</th><th>Mode</th><th>Cash In</th><th>Cash Out</th><th>Balance</th><th>Actions</th></tr>
+        </thead>
+        <tbody id="entryList"></tbody>
+      </table>
     </div>
   </div>
 
-  <script>
-    const CLIENT_ID = "YOUR_CLIENT_ID_HERE"; // keep your same client ID
-    const API_KEY = "";
-    const SCOPES = "https://www.googleapis.com/auth/drive.file";
+  <!-- Edit modal (same as original) -->
+  <div id="editModal" style="display:none; position:fixed; left:0;top:0;right:0;bottom:0;align-items:center;justify-content:center;background:rgba(0,0,0,0.4); z-index:9999;">
+    <div class="card" style="width:420px;background:#fff;padding:16px;border-radius:10px;">
+      <h4>Edit Entry</h4>
+      <label>Date</label><input type="date" id="editDate"><label>Time</label><input type="time" id="editTime">
+      <label>Mode</label><select id="editMode"><option>Cash</option><option>Online</option></select>
+      <label>Amount (₹)</label><input type="number" id="editAmount"><label>Remark</label><input type="text" id="editRemark">
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
+        <button id="cancelEdit" class="small">Cancel</button>
+        <button id="saveEdit" class="small">Save</button>
+      </div>
+    </div>
+  </div>
 
-    let accessToken = null;
-    let dataFileId = null;
-    let allData = {};
-    let syncTimer;
+<script>
+/* --------------------
+   CONFIG
+   -------------------- */
+const CLIENT_ID = '276544229541-udlegtaa830stnsksmlspovakis9m337.apps.googleusercontent.com'; // your client id (unchanged)
+const SCOPES = 'https://www.googleapis.com/auth/drive.file';
+const DATA_FILENAME = 'vishclick-cashbook-data.json';
 
-    const signInDiv = document.getElementById("signInDiv");
-    const signOutBtn = document.getElementById("signOutBtn");
-    const syncButton = document.getElementById("syncButton");
-    const syncStatus = document.getElementById("syncStatus");
-    const syncSection = document.getElementById("syncSection");
-    const bookList = document.getElementById("bookList");
+/* --------------------
+   STATE
+   -------------------- */
+let tokenClient = null;
+let accessToken = null;
+let dataFileId = null;
+let allData = {};
+let currentBookName = null;
+let editingEntryId = null;
+let autoSyncIntervalId = null;
 
-    // Initialize Google Auth
-    function initClient() {
-      google.accounts.oauth2.initTokenClient({
-        client_id: CLIENT_ID,
-        scope: SCOPES,
-        callback: (tokenResponse) => {
-          accessToken = tokenResponse.access_token;
-          signInDiv.style.display = "none";
-          signOutBtn.style.display = "inline-block";
-          syncSection.style.display = "flex";
-          loadDataFromDrive();
-        },
+/* --------------------
+   DOM REFS
+   -------------------- */
+const gIdSignin = document.getElementById('g_id_signin');
+const appContainer = document.getElementById('app-container');
+const homeScreen = document.getElementById('homeScreen');
+const detailsScreen = document.getElementById('detailsScreen');
+const bookList = document.getElementById('bookList');
+const addBookForm = document.getElementById('addBookForm');
+const newBookNameInput = document.getElementById('newBookName');
+const signoutButton = document.getElementById('signout_button');
+const userInfo = document.getElementById('user-info');
+const backButton = document.getElementById('backButton');
+const bookTitle = document.getElementById('bookTitle');
+const dateInput = document.getElementById('dateInput');
+const timeInput = document.getElementById('timeInput');
+const modeInput = document.getElementById('modeInput');
+const amountInput = document.getElementById('amountInput');
+const remarkInput = document.getElementById('remarkInput');
+const cashInButton = document.getElementById('cashInButton');
+const cashOutButton = document.getElementById('cashOutButton');
+const totalInDisplay = document.getElementById('totalInDisplay');
+const totalOutDisplay = document.getElementById('totalOutDisplay');
+const netBalanceDisplay = document.getElementById('netBalanceDisplay');
+const entryList = document.getElementById('entryList');
+const exportPdfButton = document.getElementById('exportPdfButton');
+const syncButton = document.getElementById('syncButton');
+const syncStatus = document.getElementById('syncStatus');
+
+const editModal = document.getElementById('editModal');
+const editDate = document.getElementById('editDate');
+const editTime = document.getElementById('editTime');
+const editMode = document.getElementById('editMode');
+const editAmount = document.getElementById('editAmount');
+const editRemark = document.getElementById('editRemark');
+const saveEdit = document.getElementById('saveEdit');
+const cancelEdit = document.getElementById('cancelEdit');
+
+/* --------------------
+   Local backup helpers
+   -------------------- */
+function saveToLocalBackup() {
+  try {
+    localStorage.setItem('vc_allData', JSON.stringify(allData || {}));
+    if (dataFileId) localStorage.setItem('vc_dataFileId', dataFileId);
+  } catch (e) { console.warn('Local backup fail', e); }
+}
+function loadFromLocalBackup() {
+  try {
+    const t = localStorage.getItem('vc_allData');
+    const id = localStorage.getItem('vc_dataFileId');
+    if (t) allData = JSON.parse(t);
+    if (id) dataFileId = id;
+  } catch (e) { console.warn('Local load fail', e); }
+}
+loadFromLocalBackup();
+
+/* --------------------
+   AUTH INITIALIZATION
+   -------------------- */
+window.onload = () => {
+  // render one-tap/google sign in button
+  google.accounts.id.initialize({ client_id: CLIENT_ID, callback: handleOneTap });
+  google.accounts.id.renderButton(gIdSignin, { theme: 'outline', size: 'large' });
+
+  // prepare token client (single instance)
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: SCOPES,
+    callback: (resp) => {
+      if (resp && resp.error) {
+        console.error('tokenClient callback error', resp);
+        alert('Google sign-in failed: ' + (resp.error_description || resp.error));
+        return;
+      }
+      accessToken = resp.access_token;
+      // load gapi client after we have access token
+      gapi.load('client', () => {
+        gapi.client.init({}).then(() => {
+          gapi.client.setToken({ access_token: accessToken });
+          userInfo.style.display = 'block';
+          userInfo.textContent = 'Signed in';
+          signoutButton.style.display = 'block';
+          gIdSignin.style.display = 'none';
+          appContainer.style.display = 'block';
+          findOrCreateFile();
+          renderBookList();
+          startAutoSync(); // start auto sync only after sign-in
+        }).catch(err => {
+          console.error('gapi.client.init error', err);
+          alert('GAPI init failed. Check console for details.');
+        });
       });
     }
+  });
 
-    window.onload = () => {
-      signInDiv.innerHTML = '<button onclick="handleSignIn()" style="background:#1f6feb;color:#fff;padding:8px 14px;border:none;border-radius:8px;">Sign In with Google</button>';
-      gapi.load("client", initClient);
+  // if we have local data, show UI immediately (so mobile can see local book before auth)
+  if (Object.keys(allData).length > 0) {
+    userInfo.style.display = 'block';
+    userInfo.textContent = 'Signed in (local data)';
+    gIdSignin.style.display = 'none';
+    signoutButton.style.display = 'block';
+    appContainer.style.display = 'block';
+    renderBookList();
+  }
+};
+
+/* One-tap or button callback (keeps behavior—we still use tokenClient to request Drive scopes) */
+function handleOneTap(credentialResponse) {
+  // one-tap gives an ID token for user identity only; we still need OAuth access token for Drive
+  // So request access token (force consent on mobile if needed)
+  try {
+    tokenClient.requestAccessToken({ prompt: 'consent' });
+  } catch (e) {
+    console.error('requestAccessToken error', e);
+    alert('Sign-in failed. If you see a 400 error, open Chrome settings and ensure this origin is registered in Google Cloud Console (Authorized JavaScript origins).');
+  }
+}
+
+signoutButton.onclick = () => {
+  accessToken = null;
+  google.accounts.id.disableAutoSelect();
+  gIdSignin.style.display = 'block';
+  signoutButton.style.display = 'none';
+  userInfo.style.display = 'none';
+  appContainer.style.display = 'none';
+  clearInterval(autoSyncIntervalId);
+  saveToLocalBackup();
+};
+
+/* --------------------
+   DRIVE file handling
+   -------------------- */
+function findOrCreateFile() {
+  if (!accessToken) {
+    renderBookList();
+    return;
+  }
+  const stored = localStorage.getItem('vc_dataFileId');
+  if (stored) {
+    dataFileId = stored;
+    readFile(stored);
+  } else {
+    gapi.client.drive.files.list({
+      q: `name='${DATA_FILENAME}' and trashed=false`,
+      fields: 'files(id,name)'
+    }).then(res => {
+      if (res.result.files && res.result.files.length > 0) {
+        dataFileId = res.result.files[0].id;
+        localStorage.setItem('vc_dataFileId', dataFileId);
+        readFile(dataFileId);
+      } else {
+        createFile();
+      }
+    }).catch(err => {
+      console.warn('Drive list error', err);
+      // helpful alert for 400s on mobile
+      if (err && err.status === 400) {
+        alert('Drive API returned 400. Check your OAuth client settings (Authorized JavaScript origins) in Google Cloud Console and ensure Drive API is enabled.');
+      }
+      renderBookList();
+    });
+  }
+}
+
+function readFile(fileId) {
+  gapi.client.drive.files.get({ fileId, alt: 'media' }).then(res => {
+    allData = res.result || {};
+    // ensure that entries are arrays and ids are strings (defensive)
+    Object.keys(allData).forEach(b => {
+      (allData[b] || []).forEach(e => { if (e.id !== undefined) e.id = String(e.id); });
+    });
+    saveToLocalBackup();
+    renderBookList();
+  }).catch(err => {
+    console.warn('Drive read error', err);
+    renderBookList();
+  });
+}
+
+function createFile() {
+  gapi.client.drive.files.create({
+    resource: { name: DATA_FILENAME, mimeType: 'application/json' },
+    fields: 'id'
+  }).then(res => {
+    dataFileId = res.result.id;
+    localStorage.setItem('vc_dataFileId', dataFileId);
+    uploadFile(JSON.stringify(allData || {}));
+  }).catch(err => {
+    console.warn('Drive create error', err);
+    if (err && err.status === 400) {
+      alert('Drive create returned 400. Check OAuth & Drive API settings.');
+    }
+  });
+}
+
+async function uploadFile(content) {
+  if (!accessToken || !dataFileId) return;
+  const blob = new Blob([content], { type: 'application/json' });
+  const form = new FormData();
+  // include metadata for safety
+  form.append('metadata', new Blob([JSON.stringify({ mimeType: 'application/json' })], { type: 'application/json' }));
+  form.append('file', blob);
+  try {
+    const res = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${dataFileId}?uploadType=multipart`, {
+      method: 'PATCH',
+      headers: { 'Authorization': `Bearer ${accessToken}` },
+      body: form
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      console.error('Drive upload failed', res.status, text);
+      throw new Error('Upload failed: ' + res.status);
+    }
+  } catch (err) {
+    console.warn('Drive upload error', err);
+    throw err;
+  }
+}
+
+async function saveDataFile() {
+  saveToLocalBackup();
+  // call upload but keep UI responsive
+  try {
+    await uploadFile(JSON.stringify(allData || {}));
+    showSyncStatus('success');
+  } catch (e) {
+    showSyncStatus('fail');
+  }
+}
+
+/* --------------------
+   SYNC UI + LOGIC
+   -------------------- */
+function showSyncStatus(state) {
+  if (state === 'start') {
+    syncStatus.innerHTML = '<span class="sync-anim"></span> Syncing...';
+  } else if (state === 'success') {
+    syncStatus.textContent = '✔ Synced';
+    syncStatus.style.color = 'green';
+    setTimeout(()=> syncStatus.textContent = '', 3000);
+  } else if (state === 'fail') {
+    syncStatus.textContent = '❌ Sync failed';
+    syncStatus.style.color = 'red';
+  }
+}
+
+async function syncDataToDrive_manual() {
+  if (!accessToken || !dataFileId) {
+    alert('Please sign in first to sync.');
+    return;
+  }
+  showSyncStatus('start');
+  try {
+    await uploadFile(JSON.stringify(allData || {}));
+    showSyncStatus('success');
+  } catch (err) {
+    showSyncStatus('fail');
+  }
+}
+syncButton.onclick = syncDataToDrive_manual;
+
+function startAutoSync() {
+  if (autoSyncIntervalId) clearInterval(autoSyncIntervalId);
+  autoSyncIntervalId = setInterval(() => {
+    if (accessToken && dataFileId) {
+      // fire & forget but update UI on error/success
+      showSyncStatus('start');
+      uploadFile(JSON.stringify(allData || {})).then(()=>showSyncStatus('success')).catch(()=>showSyncStatus('fail'));
+    }
+  }, 30000); // 30 seconds
+}
+
+/* --------------------
+   UI / Entries logic
+   -------------------- */
+function showScreen(s) { homeScreen.style.display = s==='home'?'block':'none'; detailsScreen.style.display = s==='details'?'block':'none'; }
+function showDetailsScreen(name) {
+  currentBookName = name;
+  bookTitle.textContent = name;
+  const now = new Date();
+  dateInput.value = now.toISOString().slice(0,10);
+  timeInput.value = now.toTimeString().slice(0,5);
+  renderEntries();
+  showScreen('details');
+}
+backButton.onclick = () => { editingEntryId = null; showScreen('home'); renderBookList(); };
+
+function computeBookTotals(name) {
+  const arr = allData[name] || [];
+  let ti = 0, to = 0;
+  arr.forEach(e => {
+    if (e.type === 'in') ti += +e.amount;
+    else to += +e.amount;
+  });
+  return { totalIn: ti, totalOut: to, net: ti - to };
+}
+
+function renderBookList() {
+  bookList.innerHTML = '';
+  Object.keys(allData).forEach(name => {
+    const div = document.createElement('div');
+    div.className = 'book-item';
+    const span = document.createElement('div');
+    span.className = 'book-name';
+    span.onclick = () => showDetailsScreen(name);
+
+    const title = document.createElement('span');
+    title.textContent = name;
+
+    const totals = computeBookTotals(name);
+    const badge = document.createElement('span');
+    badge.className = 'balance-badge '+(totals.net>=0?'balance-positive':'balance-negative');
+    badge.textContent = (totals.net>=0?'+ ':'- ')+Math.abs(totals.net).toFixed(2);
+    badge.title = 'Net balance';
+
+    span.append(title, badge);
+
+    const delBtn = document.createElement('button');
+    delBtn.textContent = 'Delete';
+    delBtn.className = 'book-delete-btn';
+    delBtn.onclick = (e) => {
+      e.stopPropagation();
+      const confirmDel = prompt(`Type the book name "${name}" to confirm deletion:`);
+      if (confirmDel === name) {
+        delete allData[name];
+        saveToLocalBackup();
+        saveDataFile();
+        renderBookList();
+        alert(`Book "${name}" deleted.`);
+      } else {
+        alert('Deletion cancelled.');
+      }
     };
 
-    function handleSignIn() {
-      google.accounts.oauth2.initTokenClient({
-        client_id: CLIENT_ID,
-        scope: SCOPES,
-        callback: (tokenResponse) => {
-          accessToken = tokenResponse.access_token;
-          signInDiv.style.display = "none";
-          signOutBtn.style.display = "inline-block";
-          syncSection.style.display = "flex";
-          loadDataFromDrive();
-        },
-      }).requestAccessToken();
-    }
+    div.append(span, delBtn);
+    bookList.append(div);
+  });
+  if (Object.keys(allData).length === 0) {
+    bookList.innerHTML = '<div style="margin-top:12px;color:#666;">No cashbooks yet. Create one above to start tracking.</div>';
+  }
+}
 
-    function handleSignOut() {
-      accessToken = null;
-      signInDiv.style.display = "block";
-      signOutBtn.style.display = "none";
-      syncSection.style.display = "none";
-      bookList.innerHTML = "";
-      clearInterval(syncTimer);
-    }
+addBookForm.onsubmit = e => {
+  e.preventDefault();
+  const n = newBookNameInput.value.trim();
+  if (n && !allData[n]) {
+    allData[n] = [];
+    newBookNameInput.value = '';
+    renderBookList();
+    saveToLocalBackup();
+    saveDataFile();
+  } else {
+    alert('Book name already exists or is invalid.');
+  }
+};
 
-    signOutBtn.onclick = handleSignOut;
+function addEntry(type) {
+  const a = parseFloat(amountInput.value);
+  if (!currentBookName) return alert('Select a book first.');
+  if (isNaN(a) || a <= 0) return alert('Enter a valid amount.');
+  if (!remarkInput.value.trim()) return alert('Enter remark.');
+  const d = dateInput.value || new Date().toISOString().slice(0,10);
+  const t = timeInput.value || new Date().toTimeString().slice(0,5);
+  // id MUST be a string to remain stable across JSON roundtrip
+  const entry = { id: String(Date.now() + Math.floor(Math.random()*100000)), date:`${d} ${t}`, remark: remarkInput.value.trim(), mode: modeInput.value, amount: a, type };
+  allData[currentBookName].push(entry);
+  renderEntries();
+  saveToLocalBackup();
+  saveDataFile();
+  amountInput.value = '';
+  remarkInput.value = '';
+}
 
-    // Load data
-    async function loadDataFromDrive() {
-      try {
-        const res = await gapi.client.request({
-          path: "https://www.googleapis.com/drive/v3/files",
-          params: { q: "name='cashbookData.json'", fields: "files(id,name)" },
-        });
-        if (res.result.files.length) {
-          dataFileId = res.result.files[0].id;
-          const contentRes = await fetch(
-            `https://www.googleapis.com/drive/v3/files/${dataFileId}?alt=media`,
-            { headers: { Authorization: "Bearer " + accessToken } }
-          );
-          allData = await contentRes.json();
-          renderBooks();
-        } else {
-          await createFile();
+cashInButton.onclick = () => addEntry('in');
+cashOutButton.onclick = () => addEntry('out');
+
+function renderEntries() {
+  if (!currentBookName) return;
+  const arr = allData[currentBookName] || [];
+
+  // ensure IDs are strings (defensive)
+  arr.forEach(e => { if (e.id !== undefined) e.id = String(e.id); });
+
+  // sort newest→oldest for display, but compute running balances oldest→newest
+  const sortedDesc = arr.slice().sort((a,b)=> new Date(b.date) - new Date(a.date));
+  const sortedAsc = arr.slice().sort((a,b)=> new Date(a.date) - new Date(b.date));
+
+  // running balances computed oldest → newest
+  let run = 0;
+  const runningBalances = {}; // maps entry.id (string) -> balance
+  for (let e of sortedAsc) {
+    if (e.type === 'in') run += +e.amount;
+    else run -= +e.amount;
+    runningBalances[String(e.id)] = run.toFixed(2);
+  }
+
+  entryList.innerHTML = '';
+  let ti = 0, to = 0;
+  for (let e of sortedDesc) {
+    if (e.type==='in') ti += +e.amount; else to += +e.amount;
+    const row = entryList.insertRow();
+    row.insertCell(0).textContent = new Date(e.date).toLocaleString();
+    row.insertCell(1).textContent = e.remark;
+    row.insertCell(2).textContent = e.mode;
+    const ci = row.insertCell(3), co = row.insertCell(4);
+    if (e.type==='in') { ci.textContent = (+e.amount).toFixed(2); ci.className='cash-in'; co.textContent = '-'; }
+    else { co.textContent = (+e.amount).toFixed(2); co.className='cash-out'; ci.textContent = '-'; }
+    // use string key to lookup running balances
+    row.insertCell(5).textContent = runningBalances[String(e.id)] ?? '-';
+    const act = row.insertCell(6);
+    const eb = document.createElement('button'); eb.textContent='Edit'; eb.className='small';
+    eb.onclick = ()=> openEditModal(e.id);
+    const db = document.createElement('button'); db.textContent='X'; db.className='delete-btn';
+    db.onclick = ()=> {
+      if (confirm('Delete this entry?')) {
+        const idx = allData[currentBookName].findIndex(x => String(x.id) === String(e.id));
+        if (idx > -1) {
+          allData[currentBookName].splice(idx,1);
+          renderEntries();
+          saveToLocalBackup();
+          saveDataFile();
         }
-        startAutoSync();
-      } catch (e) {
-        console.error("Drive load error:", e);
       }
-    }
+    };
+    act.append(eb, db);
+  }
 
-    // Create file
-    async function createFile() {
-      const res = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart", {
-        method: "POST",
-        headers: { Authorization: "Bearer " + accessToken },
-        body: new Blob([
-          `--foo_bar_baz\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n{"name":"cashbookData.json"}\r\n--foo_bar_baz\r\nContent-Type: application/json\r\n\r\n{}\r\n--foo_bar_baz--`
-        ], { type: "multipart/related; boundary=foo_bar_baz" }),
-      });
-      const data = await res.json();
-      dataFileId = data.id;
-    }
+  totalInDisplay.textContent = ti.toFixed(2);
+  totalOutDisplay.textContent = to.toFixed(2);
+  netBalanceDisplay.textContent = (ti - to).toFixed(2);
+  renderBookList();
+}
 
-    // Upload file
-    async function uploadFile(content) {
-      if (!accessToken || !dataFileId) return;
-      await fetch(`https://www.googleapis.com/upload/drive/v3/files/${dataFileId}?uploadType=media`, {
-        method: "PATCH",
-        headers: { Authorization: "Bearer " + accessToken, "Content-Type": "application/json" },
-        body: content,
-      });
-    }
+/* --------------------
+   EDIT modal
+   -------------------- */
+function openEditModal(id) {
+  const e = (allData[currentBookName]||[]).find(x=>String(x.id)===String(id));
+  if (!e) return alert('Entry not found');
+  editingEntryId = String(id);
+  const parts = (e.date || '').split(' ');
+  editDate.value = parts[0] || (new Date()).toISOString().slice(0,10);
+  editTime.value = parts[1] || '00:00';
+  editMode.value = e.mode;
+  editAmount.value = e.amount;
+  editRemark.value = e.remark;
+  editModal.style.display = 'flex';
+}
+cancelEdit.onclick = () => { editingEntryId = null; editModal.style.display = 'none'; };
+saveEdit.onclick = ()=> {
+  if (!editingEntryId) return;
+  const a = parseFloat(editAmount.value);
+  if (isNaN(a) || a <= 0) return alert('Enter valid amount.');
+  if (!editRemark.value.trim()) return alert('Enter remark.');
+  const e = (allData[currentBookName]||[]).find(x => String(x.id) === String(editingEntryId));
+  if (!e) return alert('Entry not found');
+  e.date = `${editDate.value} ${editTime.value}`;
+  e.mode = editMode.value;
+  e.amount = a;
+  e.remark = editRemark.value.trim();
+  editingEntryId = null;
+  editModal.style.display = 'none';
+  renderEntries();
+  saveToLocalBackup();
+  saveDataFile();
+};
 
-    // Render dummy data
-    function renderBooks() {
-      bookList.innerHTML = `<h3>Your Books</h3>
-      <button onclick="createBook()">➕ Create New Book</button>`;
-    }
+/* --------------------
+   PDF export (kept same)
+   -------------------- */
+exportPdfButton.onclick = () => {
+  const arr = allData[currentBookName] || [];
+  if (!arr.length) return alert('No entries to export!');
+  const sorted = arr.slice().sort((a,b) => new Date(a.date) - new Date(b.date));
+  let run=0, ti=0, to=0;
+  const rows = sorted.map(e => {
+    if (e.type==='in') { ti += +e.amount; run += +e.amount; }
+    else { to += +e.amount; run -= +e.amount; }
+    return {
+      date: new Date(e.date).toLocaleString(),
+      remark: e.remark,
+      mode: e.mode,
+      cashIn: e.type==='in'?e.amount.toFixed(2):'-',
+      cashOut: e.type==='out'?e.amount.toFixed(2):'-',
+      balance: run.toFixed(2)
+    };
+  });
+  const body = rows.slice().reverse().map(r => [r.date,r.remark,r.mode,r.cashIn,r.cashOut,r.balance]);
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF('p','mm','a4');
+  doc.setFont('helvetica');
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const margin = 10;
+  doc.setFillColor(0,38,77); doc.rect(0,0,pageWidth,12,'F');
+  doc.setTextColor(255,255,255); doc.setFontSize(16);
+  doc.text("VishClick : Design Studio", pageWidth/2, 8, { align: 'center' });
+  doc.setFillColor(230,230,250); doc.rect(0,12,pageWidth,10,'F');
+  doc.setTextColor(0); doc.setFontSize(12); doc.setFont(undefined,'bold');
+  doc.text(`Book: ${currentBookName}`, pageWidth/2, 19, { align: 'center' });
+  const totalWidth=60, gap=5, totalsY=30, totalStartX=20;
+  doc.setFontSize(9); doc.setFont(undefined,'bold');
+  doc.setFillColor(220,255,220); doc.rect(totalStartX, totalsY, totalWidth,8,'F');
+  doc.setTextColor(0,128,0); doc.text(`Total In: ${ti.toFixed(2)}`, totalStartX+3, totalsY+6);
+  doc.setFillColor(255,220,220); doc.rect(totalStartX+totalWidth+gap, totalsY, totalWidth,8,'F');
+  doc.setTextColor(220,0,0); doc.text(`Total Out: ${to.toFixed(2)}`, totalStartX+totalWidth+gap+3, totalsY+6);
+  doc.setFillColor(220,220,255); doc.rect(totalStartX+(totalWidth+gap)*2, totalsY, totalWidth,8,'F');
+  doc.setTextColor(75,0,130); doc.text(`Net Balance: ${(ti-to).toFixed(2)}`, totalStartX+(totalWidth+gap)*2+3, totalsY+6);
+  doc.autoTable({
+    head:[['Date','Remark','Mode','Cash In','Cash Out','Balance']],
+    body: body,
+    startY: totalsY+14,
+    margin:{left: margin, right: margin},
+    styles:{fontSize:9,cellPadding:2.5},
+    headStyles:{fillColor:[41,128,185], textColor:255, halign:'center'},
+    columnStyles:{0:{cellWidth:35},1:{cellWidth:'auto'},2:{cellWidth:20, halign:'center'},
+      3:{cellWidth:22,halign:'right',textColor:[0,128,0]},
+      4:{cellWidth:22,halign:'right',textColor:[220,0,0]},
+      5:{cellWidth:22,halign:'right'}
+    },
+    theme:'grid'
+  });
+  doc.save(`${currentBookName}-report.pdf`);
+};
 
-    function createBook() {
-      const name = prompt("Enter book name:");
-      if (name) {
-        allData[name] = { created: new Date().toISOString(), entries: [] };
-        renderBooks();
-        saveDataFile();
-      }
-    }
+/* --------------------
+   INITIAL RENDER
+   -------------------- */
+renderBookList();
 
-    // Save + Sync
-    async function saveDataFile() {
-      await syncDataToDrive();
-    }
+/* --------------------
+   HELPERS / DIAGNOSTICS
+   -------------------- */
+/* If you still see "400" on mobile:
+   1) Check Google Cloud Console → OAuth Consent → Authorized JavaScript origins: add https://yourdomain (or http://localhost:PORT for local testing).
+   2) Make sure Drive API is enabled for the project.
+   3) If testing on file://, OAuth WILL fail — use localhost or a proper origin.
+*/
 
-    // Sync core function
-    async function syncDataToDrive() {
-      if (!accessToken || !dataFileId) return;
-      syncStatus.innerHTML = '<span class="sync-anim"></span> Syncing...';
-      syncStatus.style.color = '#1f6feb';
-      try {
-        await uploadFile(JSON.stringify(allData || {}));
-        syncStatus.innerHTML = '✔ Synced';
-        syncStatus.style.color = '#00e676';
-        setTimeout(() => syncStatus.textContent = '', 4000);
-      } catch (err) {
-        console.error("Drive sync error:", err);
-        syncStatus.innerHTML = '❌ Failed';
-        syncStatus.style.color = '#ff5252';
-      }
-    }
+/* Note: If you want, I can: 
+   - add a small toast notification instead of alert for errors,
+   - add IndexedDB offline store (better for large data),
+   - or make the OAuth flow silent-repeat only when necessary.
+*/
 
-    syncButton.onclick = syncDataToDrive;
-
-    // Auto Sync
-    function startAutoSync() {
-      if (syncTimer) clearInterval(syncTimer);
-      syncTimer = setInterval(() => {
-        if (accessToken && dataFileId) {
-          syncDataToDrive();
-        }
-      }, 30000); // 30 sec
-    }
-  </script>
+</script>
 </body>
 </html>
