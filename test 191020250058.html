@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>VishClick : Design Studio</title>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://apis.google.com/js/api.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 10px; max-width: 900px; margin: auto; color: #333; }
+        .auth-section { margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; min-height: 40px; }
+        #app-container { display: none; }
+        #user-info { font-weight: bold; }
+        button { margin: 5px 0; padding: 10px 15px; cursor: pointer; border-radius: 8px; border: 1px solid #ccc; background-color: #f0f0f0; font-size: 14px; }
+        button:hover { background-color: #e0e0e0; }
+        input, select { box-sizing: border-box; padding: 10px; border-radius: 8px; border: 1px solid #ccc; width: 100%; margin-bottom: 10px; font-size: 14px; }
+        .book-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 15px; border: 1px solid #eee; margin-top: 8px; border-radius: 8px; }
+        .book-item:hover { background-color: #f9f9f9; }
+        .book-name { flex-grow: 1; cursor: pointer; display:flex; align-items:center; gap:10px; }
+        .book-delete-btn { background-color: #ffeded; color: #dc3545; border: 1px solid #ffb8b8; padding: 6px 12px; font-size: 12px; margin-left: 15px; }
+        .book-delete-btn:hover { background-color: #dc3545; color: white; }
+        .delete-btn { color: red; cursor: pointer; border: none; background: none; font-size: 1.1em; padding: 0 8px; }
+        .cash-in { color: #28a745; font-weight: bold; }
+        .cash-out { color: #dc3545; font-weight: bold; }
+        #summary { border: 1px solid #ccc; padding: 15px; margin-bottom: 10px; border-radius: 8px; background-color: #fafafa; display: flex; justify-content: space-between; }
+        table { border-collapse: collapse; width: 100%; margin-top: 15px; }
+        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        .balance-badge { padding: 6px 10px; border-radius: 8px; font-weight: bold; }
+        .balance-positive { background: #e6ffec; color: #0b7a3a; border: 1px solid #c8f1d1; }
+        .balance-negative { background: #fff0f0; color: #a00; border: 1px solid #f2c7c7; }
+        /* Edit modal */
+        #editModal { position: fixed; left:0; top:0; right:0; bottom:0; display:none; align-items:center; justify-content:center; background: rgba(0,0,0,0.4); z-index: 9999; }
+        #editModal .card { width: 420px; background: #fff; padding: 16px; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); }
+        #editModal h4 { margin: 0 0 8px 0; }
+        .small { font-size: 12px; padding:6px 8px; border-radius:6px; }
+        .inline-btns { display:flex; gap:8px; align-items:center; }
+        /* New sync status badge */
+        #syncStatus { font-size: 12px; color: #555; margin-left: 10px; }
+    </style>
+</head>
+<body>
+    <h2 style="text-align: center; background-color: navy; color: white; padding: 10px;"><strong>VishClick : Design Studio</strong></h2>
+
+    <div class="auth-section">
+        <div id="g_id_signin"></div>
+        <div id="user-info" style="display: none;"></div>
+        <span id="syncStatus" style="display:none;">Last synced: --:--</span>
+        <button id="signout_button" style="display: none;">Sign Out</button>
+    </div>
+    <hr>
+
+    <div id="app-container">
+        <div id="homeScreen">
+            <h3>My Cashbooks</h3>
+            <form id="addBookForm">
+                <input type="text" id="newBookName" placeholder="New cashbook name" required>
+                <button type="submit">Add New Book</button>
+            </form>
+            <div id="bookList"></div>
+        </div>
+
+        <div id="detailsScreen" style="display: none;">
+            <button id="backButton">&larr; Back to Home</button>
+            <h2 id="bookTitle" style="background-color: #e6e6fa; padding: 8px;"></h2>
+            <h3>Add New Entry</h3>
+            <form id="entryForm" onsubmit="return false;">
+                <input type="date" id="dateInput"> <input type="time" id="timeInput">
+                <select id="modeInput">
+                    <option value="Cash">Cash</option> <option value="Online">Online</option>
+                </select>
+                <input type="number" id="amountInput" placeholder="Amount (₹)" required>
+                <input type="text" id="remarkInput" placeholder="Enter details" required>
+                <div class="inline-btns">
+                    <button type="button" id="cashInButton">CASH IN</button>
+                    <button type="button" id="cashOutButton">CASH OUT</button>
+                </div>
+            </form>
+            <hr>
+            <div id="summary">
+                <div>Total In (+): <strong id="totalInDisplay" class="cash-in">0.00</strong></div>
+                <div>Total Out (-): <strong id="totalOutDisplay" class="cash-out">0.00</strong></div>
+                <div>Net Balance: <strong id="netBalanceDisplay">0.00</strong></div>
+            </div>
+            <button type="button" id="exportPdfButton">Export Report as PDF</button>
+            <h3>Entries</h3>
+            <table>
+                <thead>
+                    <tr><th>Date</th><th>Remark</th><th>Mode</th><th>Cash In</th><th>Cash Out</th><th>Balance</th><th>Actions</th></tr>
+                </thead>
+                <tbody id="entryList"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="editModal">
+        <div class="card">
+            <h4>Edit Entry</h4>
+            <label>Date</label>
+            <input type="date" id="editDate">
+            <label>Time</label>
+            <input type="time" id="editTime">
+            <label>Mode</label>
+            <select id="editMode"><option>Cash</option><option>Online</option></select>
+            <label>Amount (₹)</label>
+            <input type="number" id="editAmount">
+            <label>Remark</label>
+            <input type="text" id="editRemark">
+            <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
+                <button id="cancelEdit" class="small">Cancel</button>
+                <button id="saveEdit" class="small">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // === CONFIG ===
+        const CLIENT_ID = '276544229541-udlegtaa830stnsksmlspovakis9m337.apps.googleusercontent.com';
+        const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.metadata.readonly';
+        const DATA_FILENAME = 'vishclick-cashbook-data.json';
+
+        // === STATE ===
+        let tokenClient, accessToken = null;
+        let allData = {};
+        let dataFileId = null;
+        let currentBookName = null;
+        let editingEntryId = null;
+
+        // DOM
+        const gIdSignin = document.getElementById('g_id_signin');
+        const appContainer = document.getElementById('app-container');
+        const homeScreen = document.getElementById('homeScreen');
+        const detailsScreen = document.getElementById('detailsScreen');
+        const bookList = document.getElementById('bookList');
+        const addBookForm = document.getElementById('addBookForm');
+        const newBookNameInput = document.getElementById('newBookName');
+        const signoutButton = document.getElementById('signout_button');
+        const userInfo = document.getElementById('user-info');
+        const syncStatus = document.getElementById('syncStatus');
+
+        const backButton = document.getElementById('backButton');
+        const bookTitle = document.getElementById('bookTitle');
+        const dateInput = document.getElementById('dateInput');
+        const timeInput = document.getElementById('timeInput');
+        const modeInput = document.getElementById('modeInput');
+        const amountInput = document.getElementById('amountInput');
+        const remarkInput = document.getElementById('remarkInput');
+        const cashInButton = document.getElementById('cashInButton');
+        const cashOutButton = document.getElementById('cashOutButton');
+        const totalInDisplay = document.getElementById('totalInDisplay');
+        const totalOutDisplay = document.getElementById('totalOutDisplay');
+        const netBalanceDisplay = document.getElementById('netBalanceDisplay');
+        const entryList = document.getElementById('entryList');
+        const exportPdfButton = document.getElementById('exportPdfButton');
+
+        const editModal = document.getElementById('editModal');
+        const editDate = document.getElementById('editDate');
+        const editTime = document.getElementById('editTime');
+        const editMode = document.getElementById('editMode');
+        const editAmount = document.getElementById('editAmount');
+        const editRemark = document.getElementById('editRemark');
+        const saveEdit = document.getElementById('saveEdit');
+        const cancelEdit = document.getElementById('cancelEdit');
+
+        // === Local backup helpers ===
+        function saveToLocalBackup() {
+            try {
+                localStorage.setItem('vc_allData', JSON.stringify(allData || {}));
+                if (dataFileId) localStorage.setItem('vc_dataFileId', dataFileId);
+            } catch (e) { console.warn('Local backup fail', e); }
+        }
+        function loadFromLocalBackup() {
+            try {
+                const t = localStorage.getItem('vc_allData');
+                const id = localStorage.getItem('vc_dataFileId');
+                if (t) allData = JSON.parse(t);
+                if (id) dataFileId = id;
+            } catch (e) { console.warn('Local load fail', e); }
+        }
+        loadFromLocalBackup();
+
+        // === Update sync status ===
+        function updateSyncStatus(msg) {
+            if (msg) {
+                syncStatus.style.display='inline';
+                syncStatus.textContent = 'Last synced: '+msg;
+            }
+        }
+        function setSyncTimestamp() {
+            const now = new Date();
+            updateSyncStatus(now.toLocaleTimeString());
+        }
+
+        // === Google Sign-in & Drive init ===
+        window.onload = () => {
+          google.accounts.id.initialize({
+            client_id: CLIENT_ID,
+            callback: handleCredentialResponse
+          });
+          google.accounts.id.renderButton(gIdSignin, { theme: 'outline', size: 'large' });
+          google.accounts.id.prompt();
+
+          if (Object.keys(allData).length > 0) {
+            userInfo.style.display = 'block';
+            userInfo.textContent = 'Signed in (local data)';
+            gIdSignin.style.display = 'none';
+            signoutButton.style.display = 'block';
+            syncStatus.style.display='inline';
+            appContainer.style.display = 'block';
+            renderBookList();
+          }
+        };
+
+        function handleCredentialResponse(response) {
+          tokenClient = google.accounts.oauth2.initTokenClient({
+            client_id: CLIENT_ID,
+            scope: SCOPES,
+            callback: (tokenResponse) => {
+              if (tokenResponse.error) { console.warn('Token error', tokenResponse); return; }
+              accessToken = tokenResponse.access_token;
+              if (accessToken) { gapi.load('client', initGapi); }
+            }
+          });
+          tokenClient.requestAccessToken();
+        }
+
+        async function initGapi() {
+            try {
+                await gapi.client.init({});
+                gapi.client.setToken({ access_token: accessToken });
+                userInfo.style.display = 'block';
+                userInfo.textContent = 'Signed in';
+                signoutButton.style.display = 'block';
+                gIdSignin.style.display = 'none';
+                appContainer.style.display = 'block';
+                syncStatus.style.display='inline';
+                await findOrCreateFile();
+                renderBookList();
+            } catch(e){ console.error('GAPI init failed', e);}
+        }
+
+        signoutButton.onclick = () => {
+          accessToken = null;
+          google.accounts.id.disableAutoSelect();
+          gIdSignin.style.display = 'block';
+          signoutButton.style.display = 'none';
+          userInfo.style.display = 'none';
+          syncStatus.style.display='none';
+          appContainer.style.display = 'none';
+          saveToLocalBackup();
+        };
+
+        // === Drive helpers ===
+        async function uploadFile(content) {
+          if (!accessToken || !dataFileId) return;
+          try {
+            const blob = new Blob([content], { type: 'application/json' });
+            const res = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${dataFileId}?uploadType=media`, {
+              method: 'PATCH',
+              headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+              body: blob
+            });
+            if (res.ok) setSyncTimestamp();
+            else console.warn('Drive upload non-ok', res.status, await res.text());
+          } catch (err) { console.warn('Drive upload error', err); }
+        }
+
+        async function readFile(fileId) {
+            try {
+                const res = await gapi.client.drive.files.get({ fileId: fileId, alt: 'media' });
+                allData = JSON.parse(res.body || '{}');
+                saveToLocalBackup();
+                renderBookList();
+                setSyncTimestamp();
+            } catch(e){ console.error('Read file failed', e);}
+        }
+
+        async function findOrCreateFile() {
+            try {
+                const res = await gapi.client.drive.files.list({
+                    q: `name='${DATA_FILENAME}' and trashed=false`,
+                    fields: 'files(id, name, modifiedTime)'
+                });
+                if(res.result.files.length>0){
+                    dataFileId = res.result.files[0].id;
+                    localStorage.setItem('vc_dataFileId', dataFileId);
+                    await readFile(dataFileId);
+                } else {
+                    const createRes = await gapi.client.drive.files.create({
+                        resource:{name:DATA_FILENAME,mimeType:'application/json'},
+                        media:{mimeType:'application/json', body:JSON.stringify(allData||{})},
+                        fields:'id'
+                    });
+                    dataFileId = createRes.result.id;
+                    localStorage.setItem('vc_dataFileId', dataFileId);
+                }
+                setSyncTimestamp();
+            } catch(e){ console.error('Find or create file failed', e);}
+        }
+
+        async function autoSyncFromDrive() {
+          if (!accessToken || !dataFileId) return;
+          try {
+            const meta = await gapi.client.drive.files.get({ fileId: dataFileId, fields: 'modifiedTime' });
+            const driveModified = meta.result.modifiedTime;
+            const localDriveModified = localStorage.getItem('vc_driveModifiedTime');
+            if (!localDriveModified || new Date(driveModified) > new Date(localDriveModified)) {
+                await readFile(dataFileId);
+                localStorage.setItem('vc_driveModifiedTime', driveModified);
+                console.log('Auto-downloaded latest data from Drive.');
+            } else {
+                await saveDataFile();
+                localStorage.setItem('vc_driveModifiedTime', driveModified);
+                console.log('Local data newer — uploaded to Drive.');
+            }
+          } catch(e){ console.warn('Auto-sync from drive failed', e);}
+        }
+
+        async function saveDataFile() {
+            saveToLocalBackup();
+            await uploadFile(JSON.stringify(allData||{}));
+        }
+
+        async function afterDataChange(){
+            saveToLocalBackup();
+            await autoSyncToDriveAfterChange();
+        }
+
+        async function autoSyncToDriveAfterChange(){
+            if(!accessToken||!dataFileId) return;
+            await saveDataFile();
+        }
+
+        window.addEventListener('focus', () => { if(accessToken&&dataFileId) autoSyncFromDrive(); });
+        setInterval(()=>{ if(accessToken&&dataFileId) autoSyncFromDrive(); },60*1000);
+
+        // === UI logic for book list, entries, edit modal, cash in/out, render entries, PDF export ===
+        // Implement renderBookList(), addBook(), addEntry(), renderEntries(), editEntry() etc.
+        // Make sure after every data change, call afterDataChange()
+    </script>
+</body>
+</html>
