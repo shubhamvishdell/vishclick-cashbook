@@ -407,41 +407,58 @@
         function renderEntries() {
           if (!currentBookName) return;
           const arr = allData[currentBookName] || [];
-          const sorted = arr.slice().sort((a,b) => new Date(a.date) - new Date(b.date));
-          let ti=0,to=0,run=0;
-          entryList.innerHTML = '';
-          for (let e of sorted) {
-            if (e.type==='in') { ti += +e.amount; run += +e.amount; }
-            else { to += +e.amount; run -= +e.amount; }
-            const row = entryList.insertRow();
-            row.insertCell(0).textContent = new Date(e.date).toLocaleString();
-            row.insertCell(1).textContent = e.remark;
-            row.insertCell(2).textContent = e.mode;
-            const ci = row.insertCell(3), co = row.insertCell(4);
-            if (e.type==='in') { ci.textContent = e.amount.toFixed(2); ci.className = 'cash-in'; co.textContent = '-'; }
-            else { co.textContent = e.amount.toFixed(2); co.className = 'cash-out'; ci.textContent = '-'; }
-            row.insertCell(5).textContent = run.toFixed(2);
-            const act = row.insertCell(6);
-            const eb = document.createElement('button');
-            eb.textContent = 'Edit';
-            eb.className = 'small';
-            eb.onclick = () => openEditModal(e.id);
-            const db = document.createElement('button');
-            db.textContent = 'X';
-            db.className = 'delete-btn';
-            db.onclick = () => {
-              if (confirm('Delete this entry?')) {
-                const idx = allData[currentBookName].findIndex(x=>x.id===e.id);
-                if (idx > -1) {
-                  allData[currentBookName].splice(idx,1);
-                  renderEntries();
-                  saveToLocalBackup();
-                  saveDataFile();
-                }
-              }
-            };
-            act.append(eb, db);
-          }
+          const sorted = arr.slice().sort((a,b) => new Date(b.date) - new Date(a.date));
+         let ti = 0, to = 0;
+entryList.innerHTML = '';
+
+// Calculate running balances from oldest → newest
+const sortedForBalance = arr.slice().sort((a,b) => new Date(a.date) - new Date(b.date));
+let runningBalances = {};
+let run = 0;
+for (let e of sortedForBalance) {
+    if (e.type==='in') run += +e.amount;
+    else run -= +e.amount;
+    runningBalances[e.id] = run.toFixed(2);
+}
+
+// Now render latest → oldest in table
+for (let e of sorted) {
+    if (e.type==='in') ti += +e.amount;
+    else to += +e.amount;
+    const row = entryList.insertRow();
+    row.insertCell(0).textContent = new Date(e.date).toLocaleString();
+    row.insertCell(1).textContent = e.remark;
+    row.insertCell(2).textContent = e.mode;
+    const ci = row.insertCell(3), co = row.insertCell(4);
+    if (e.type==='in') { ci.textContent = e.amount.toFixed(2); ci.className = 'cash-in'; co.textContent = '-'; }
+    else { co.textContent = e.amount.toFixed(2); co.className = 'cash-out'; ci.textContent = '-'; }
+    row.insertCell(5).textContent = runningBalances[e.id];
+    const act = row.insertCell(6);
+    const eb = document.createElement('button');
+    eb.textContent = 'Edit';
+    eb.className = 'small';
+    eb.onclick = () => openEditModal(e.id);
+    const db = document.createElement('button');
+    db.textContent = 'X';
+    db.className = 'delete-btn';
+    db.onclick = () => {
+      if (confirm('Delete this entry?')) {
+        const idx = allData[currentBookName].findIndex(x=>x.id===e.id);
+        if (idx > -1) {
+          allData[currentBookName].splice(idx,1);
+          renderEntries();
+          saveToLocalBackup();
+          saveDataFile();
+        }
+      }
+    };
+    act.append(eb, db);
+}
+
+totalInDisplay.textContent = ti.toFixed(2);
+totalOutDisplay.textContent = to.toFixed(2);
+netBalanceDisplay.textContent = (ti - to).toFixed(2);
+renderBookList();
           totalInDisplay.textContent = ti.toFixed(2);
           totalOutDisplay.textContent = to.toFixed(2);
           netBalanceDisplay.textContent = (ti - to).toFixed(2);
