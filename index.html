@@ -8,106 +8,150 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 10px; max-width: 900px; margin: auto; color: #333; }
-        .auth-section { margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; min-height: 40px; }
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 10px; max-width: 900px; margin: auto; color: #333; background-color: #fafafa; }
+        .auth-section { margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; min-height: 40px; gap: 15px; flex-wrap: wrap; }
         #app-container { display: none; }
-        #user-info { font-weight: bold; }
-        button { margin: 5px 0; padding: 10px 15px; cursor: pointer; border-radius: 8px; border: 1px solid #ccc; background-color: #f0f0f0; font-size: 14px; }
+        #user-info { font-weight: bold; color: #0066cc; }
+        #sync-status { font-size: 12px; color: #666; padding: 4px 8px; background: #f0f0f0; border-radius: 4px; }
+        button { margin: 5px 0; padding: 10px 15px; cursor: pointer; border-radius: 8px; border: 1px solid #ccc; background-color: #f0f0f0; font-size: 14px; transition: all 0.3s; }
         button:hover { background-color: #e0e0e0; }
+        button:active { transform: scale(0.98); }
         input, select { box-sizing: border-box; padding: 10px; border-radius: 8px; border: 1px solid #ccc; width: 100%; margin-bottom: 10px; font-size: 14px; }
-        .book-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 15px; border: 1px solid #eee; margin-top: 8px; border-radius: 8px; }
-        .book-item:hover { background-color: #f9f9f9; }
+        input:focus, select:focus { outline: none; border-color: #0066cc; box-shadow: 0 0 4px rgba(0,102,204,0.3); }
+        .book-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 15px; border: 1px solid #eee; margin-top: 8px; border-radius: 8px; background: white; transition: all 0.2s; }
+        .book-item:hover { background-color: #f9f9f9; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
         .book-name { flex-grow: 1; cursor: pointer; display:flex; align-items:center; gap:10px; }
         .book-delete-btn { background-color: #ffeded; color: #dc3545; border: 1px solid #ffb8b8; padding: 6px 12px; font-size: 12px; margin-left: 15px; }
         .book-delete-btn:hover { background-color: #dc3545; color: white; }
-        .delete-btn { color: red; cursor: pointer; border: none; background: none; font-size: 1.1em; padding: 0 8px; }
+        .delete-btn { color: red; cursor: pointer; border: none; background: none; font-size: 1.1em; padding: 0 8px; transition: color 0.2s; }
+        .delete-btn:hover { color: darkred; }
         .cash-in { color: #28a745; font-weight: bold; }
         .cash-out { color: #dc3545; font-weight: bold; }
-        #summary { border: 1px solid #ccc; padding: 15px; margin-bottom: 10px; border-radius: 8px; background-color: #fafafa; display: flex; justify-content: space-between; }
-        table { border-collapse: collapse; width: 100%; margin-top: 15px; }
+        #summary { border: 1px solid #ccc; padding: 15px; margin-bottom: 10px; border-radius: 8px; background-color: white; display: flex; justify-content: space-around; gap: 10px; flex-wrap: wrap; }
+        #summary > div { text-align: center; }
+        table { border-collapse: collapse; width: 100%; margin-top: 15px; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
-        th { background-color: #f2f2f2; }
-        .balance-badge { padding: 6px 10px; border-radius: 8px; font-weight: bold; }
+        th { background-color: #f2f2f2; font-weight: 600; }
+        tr:hover { background-color: #f9f9f9; }
+        .balance-badge { padding: 6px 10px; border-radius: 8px; font-weight: bold; font-size: 12px; }
         .balance-positive { background: #e6ffec; color: #0b7a3a; border: 1px solid #c8f1d1; }
         .balance-negative { background: #fff0f0; color: #a00; border: 1px solid #f2c7c7; }
+        .balance-zero { background: #e8e8ff; color: #333; border: 1px solid #d0d0ff; }
         /* Edit modal */
-        #editModal { position: fixed; left:0; top:0; right:0; bottom:0; display:none; align-items:center; justify-content:center; background: rgba(0,0,0,0.4); z-index: 9999; }
-        #editModal .card { width: 420px; background: #fff; padding: 16px; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); }
-        #editModal h4 { margin: 0 0 8px 0; }
-        .small { font-size: 12px; padding:6px 8px; border-radius:6px; }
-        .inline-btns { display:flex; gap:8px; align-items:center; }
+        #editModal { position: fixed; left:0; top:0; right:0; bottom:0; display:none; align-items:center; justify-content:center; background: rgba(0,0,0,0.5); z-index: 9999; }
+        #editModal .card { width: 90%; max-width: 420px; background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.2); }
+        #editModal h4 { margin: 0 0 16px 0; font-size: 18px; }
+        #editModal label { display: block; font-weight: 500; margin-top: 12px; margin-bottom: 4px; }
+        .small { font-size: 12px; padding:8px 12px; border-radius:6px; }
+        .inline-btns { display:flex; gap:8px; align-items:center; flex-wrap: wrap; }
+        .modal-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:16px; }
+        .modal-actions button { margin: 0; }
+        
+        /* Responsive */
+        @media (max-width: 600px) {
+            #summary { flex-direction: column; }
+            #editModal .card { width: 95%; }
+            table { font-size: 12px; }
+            th, td { padding: 8px; }
+        }
     </style>
 </head>
 <body>
-    <h2 style="text-align: center; background-color: navy; color: white; padding: 10px;"><strong>VishClick : Design Studio</strong></h2>
+    <h2 style="text-align: center; background: linear-gradient(135deg, navy 0%, #003366 100%); color: white; padding: 12px; border-radius: 8px; margin: 0 0 15px 0;"><strong>📊 VishClick : Design Studio</strong></h2>
 
     <div class="auth-section">
         <div id="g_id_signin"></div>
         <div id="user-info" style="display: none;"></div>
+        <div id="sync-status" style="display: none;"></div>
         <button id="signout_button" style="display: none;">Sign Out</button>
     </div>
     <hr>
 
     <div id="app-container">
         <div id="homeScreen">
-            <h3>My Cashbooks</h3>
+            <h3>📚 My Cashbooks</h3>
             <form id="addBookForm">
-                <input type="text" id="newBookName" placeholder="New cashbook name" required>
-                <button type="submit">Add New Book</button>
+                <div style="display: flex; gap: 8px;">
+                    <input type="text" id="newBookName" placeholder="New cashbook name" required style="flex: 1;">
+                    <button type="submit" style="flex: 0 0 auto; white-space: nowrap;">Add Book</button>
+                </div>
             </form>
             <div id="bookList"></div>
         </div>
 
         <div id="detailsScreen" style="display: none;">
-            <button id="backButton">&larr; Back to Home</button>
-            <h2 id="bookTitle" style="background-color: #e6e6fa; padding: 8px;"></h2>
-            <h3>Add New Entry</h3>
+            <button id="backButton" style="margin-bottom: 10px;">← Back to Home</button>
+            <h2 id="bookTitle" style="background-color: #e6e6fa; padding: 12px; border-radius: 8px; margin: 10px 0;"></h2>
+            <h3>➕ Add New Entry</h3>
             <form id="entryForm" onsubmit="return false;">
-                <input type="date" id="dateInput"> <input type="time" id="timeInput">
+                <div style="display: flex; gap: 8px;">
+                    <input type="date" id="dateInput" style="flex: 1;">
+                    <input type="time" id="timeInput" style="flex: 1;">
+                </div>
                 <select id="modeInput">
-                    <option value="Cash">Cash</option> <option value="Online">Online</option>
+                    <option value="Cash">💵 Cash</option>
+                    <option value="Online">🌐 Online</option>
+                    <option value="Card">💳 Card</option>
+                    <option value="Cheque">📝 Cheque</option>
                 </select>
-                <input type="number" id="amountInput" placeholder="Amount (₹)" required>
+                <input type="number" id="amountInput" placeholder="Amount (₹)" step="0.01" required>
                 <input type="text" id="remarkInput" placeholder="Enter details" required>
                 <div class="inline-btns">
-                    <button type="button" id="cashInButton">CASH IN</button>
-                    <button type="button" id="cashOutButton">CASH OUT</button>
+                    <button type="button" id="cashInButton" style="flex: 1; background-color: #e6f7e6; border-color: #28a745; color: #28a745; font-weight: 600;">✓ CASH IN</button>
+                    <button type="button" id="cashOutButton" style="flex: 1; background-color: #ffe6e6; border-color: #dc3545; color: #dc3545; font-weight: 600;">✕ CASH OUT</button>
                 </div>
             </form>
             <hr>
             <div id="summary">
-                <div>Total In (+): <strong id="totalInDisplay" class="cash-in">0.00</strong></div>
-                <div>Total Out (-): <strong id="totalOutDisplay" class="cash-out">0.00</strong></div>
-                <div>Net Balance: <strong id="netBalanceDisplay">0.00</strong></div>
+                <div>
+                    <div style="font-size: 12px; color: #666;">Total In (+)</div>
+                    <div style="font-size: 20px;" class="cash-in">₹ <span id="totalInDisplay">0.00</span></div>
+                </div>
+                <div>
+                    <div style="font-size: 12px; color: #666;">Total Out (-)</div>
+                    <div style="font-size: 20px;" class="cash-out">₹ <span id="totalOutDisplay">0.00</span></div>
+                </div>
+                <div>
+                    <div style="font-size: 12px; color: #666;">Net Balance</div>
+                    <div style="font-size: 20px; font-weight: bold;" id="netBalanceDisplay">₹ 0.00</div>
+                </div>
             </div>
-            <button type="button" id="exportPdfButton">Export Report as PDF</button>
-            <h3>Entries</h3>
-            <table>
-                <thead>
-                    <tr><th>Date</th><th>Remark</th><th>Mode</th><th>Cash In</th><th>Cash Out</th><th>Balance</th><th>Actions</th></tr>
-                </thead>
-                <tbody id="entryList"></tbody>
-            </table>
+            <button type="button" id="exportPdfButton" style="width: 100%; background-color: #f0f0f0; margin-bottom: 15px;">📥 Export Report as PDF</button>
+            <h3>📋 Entries</h3>
+            <div style="overflow-x: auto;">
+                <table>
+                    <thead>
+                        <tr><th>Date</th><th>Remark</th><th>Mode</th><th>Cash In</th><th>Cash Out</th><th>Balance</th><th>Actions</th></tr>
+                    </thead>
+                    <tbody id="entryList"></tbody>
+                </table>
+            </div>
         </div>
     </div>
 
     <!-- Edit modal -->
     <div id="editModal">
         <div class="card">
-            <h4>Edit Entry</h4>
+            <h4>✏️ Edit Entry</h4>
             <label>Date</label>
             <input type="date" id="editDate">
             <label>Time</label>
             <input type="time" id="editTime">
             <label>Mode</label>
-            <select id="editMode"><option>Cash</option><option>Online</option></select>
+            <select id="editMode">
+                <option>💵 Cash</option>
+                <option>🌐 Online</option>
+                <option>💳 Card</option>
+                <option>📝 Cheque</option>
+            </select>
             <label>Amount (₹)</label>
-            <input type="number" id="editAmount">
+            <input type="number" id="editAmount" step="0.01">
             <label>Remark</label>
             <input type="text" id="editRemark">
-            <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
+            <div class="modal-actions">
                 <button id="cancelEdit" class="small">Cancel</button>
-                <button id="saveEdit" class="small">Save</button>
+                <button id="saveEdit" class="small" style="background-color: #e6f7e6; border-color: #28a745; color: #28a745; font-weight: 600;">Save</button>
             </div>
         </div>
     </div>
@@ -120,13 +164,13 @@
 
         // === STATE ===
         let tokenClient, accessToken = null;
-        let allData = {}; // { bookName: { entries: [...], updatedAt: timestamp } }
+        let allData = {};
         let dataFileId = null;
         let currentBookName = null;
         let editingEntryId = null;
-
-        // store last known drive modified time to help conflicts
-        // localStorage key: vc_driveModifiedTime
+        let isSyncing = false;
+        let lastDriveSync = 0;
+        const MIN_SYNC_INTERVAL = 2000;
 
         // === DOM refs ===
         const gIdSignin = document.getElementById('g_id_signin');
@@ -138,6 +182,7 @@
         const newBookNameInput = document.getElementById('newBookName');
         const signoutButton = document.getElementById('signout_button');
         const userInfo = document.getElementById('user-info');
+        const syncStatus = document.getElementById('sync-status');
         const backButton = document.getElementById('backButton');
         const bookTitle = document.getElementById('bookTitle');
         const dateInput = document.getElementById('dateInput');
@@ -166,17 +211,28 @@
         function saveToLocalBackup() {
             try {
                 localStorage.setItem('vc_allData', JSON.stringify(allData || {}));
+                localStorage.setItem('vc_lastLocalUpdate', Date.now().toString());
                 if (dataFileId) localStorage.setItem('vc_dataFileId', dataFileId);
             } catch (e) { console.warn('Local backup fail', e); }
         }
+
         function loadFromLocalBackup() {
             try {
                 const t = localStorage.getItem('vc_allData');
                 const id = localStorage.getItem('vc_dataFileId');
                 if (t) allData = JSON.parse(t);
                 if (id) dataFileId = id;
-            } catch (e) { console.warn('Local load fail', e); }
+                return true;
+            } catch (e) { console.warn('Local load fail', e); return false; }
         }
+
+        function updateSyncStatus(msg) {
+            if (accessToken && dataFileId) {
+                syncStatus.style.display = 'inline-block';
+                syncStatus.textContent = msg;
+            }
+        }
+
         loadFromLocalBackup();
 
         // === Google Sign-in & Drive init ===
@@ -190,10 +246,9 @@
           });
           google.accounts.id.prompt();
 
-          // show local data if present while Google auth completes
           if (Object.keys(allData).length > 0) {
             userInfo.style.display = 'block';
-            userInfo.textContent = 'Signed in (local data)';
+            userInfo.textContent = '✓ Using Local Data';
             gIdSignin.style.display = 'none';
             signoutButton.style.display = 'block';
             appContainer.style.display = 'block';
@@ -202,13 +257,13 @@
         };
 
         function handleCredentialResponse(response) {
-          // initialize token client to get OAuth token for Drive
           tokenClient = google.accounts.oauth2.initTokenClient({
             client_id: CLIENT_ID,
             scope: SCOPES,
             callback: (tokenResponse) => {
               if (tokenResponse.error) {
                 console.warn('Token error', tokenResponse);
+                alert('Auth error. Using local data.');
                 return;
               }
               accessToken = tokenResponse.access_token;
@@ -217,7 +272,6 @@
               }
             }
           });
-          // request an access token immediately
           tokenClient.requestAccessToken();
         }
 
@@ -225,13 +279,16 @@
           gapi.client.init({}).then(() => {
             gapi.client.setToken({ access_token: accessToken });
             userInfo.style.display = 'block';
-            userInfo.textContent = 'Signed in';
+            userInfo.textContent = '✓ Signed In';
             signoutButton.style.display = 'block';
             gIdSignin.style.display = 'none';
             appContainer.style.display = 'block';
             findOrCreateFile();
             renderBookList();
-          }).catch(err => console.warn('GAPI init error', err));
+          }).catch(err => {
+            console.warn('GAPI init error', err);
+            alert('Drive sync unavailable. Using local data.');
+          });
         }
 
         signoutButton.onclick = () => {
@@ -240,25 +297,24 @@
           gIdSignin.style.display = 'block';
           signoutButton.style.display = 'none';
           userInfo.style.display = 'none';
+          syncStatus.style.display = 'none';
           appContainer.style.display = 'none';
           saveToLocalBackup();
         };
 
         // === Drive file helpers ===
 
-        // Find existing file or create new one
         function findOrCreateFile() {
           if (!accessToken) {
             renderBookList();
             return;
           }
+          updateSyncStatus('Connecting...');
           const stored = localStorage.getItem('vc_dataFileId');
           if (stored) {
             dataFileId = stored;
-            // try reading file and also check drive modified time
             readFileAndMaybeSync(stored);
           } else {
-            // look for file by name
             gapi.client.drive.files.list({
               q: `name='${DATA_FILENAME}' and trashed=false`,
               fields: 'files(id,name,modifiedTime)'
@@ -266,7 +322,6 @@
               if (res.result.files && res.result.files.length > 0) {
                 dataFileId = res.result.files[0].id;
                 localStorage.setItem('vc_dataFileId', dataFileId);
-                // store drive modified time
                 if (res.result.files[0].modifiedTime) {
                   localStorage.setItem('vc_driveModifiedTime', res.result.files[0].modifiedTime);
                 }
@@ -276,12 +331,14 @@
               }
             }).catch(err => {
               console.warn('Drive list error', err);
+              updateSyncStatus('⚠ Offline mode');
               renderBookList();
             });
           }
         }
 
         function createFile() {
+          updateSyncStatus('Creating file...');
           gapi.client.drive.files.create({
             resource: { name: DATA_FILENAME, mimeType: 'application/json' },
             fields: 'id,modifiedTime'
@@ -289,31 +346,29 @@
             dataFileId = res.result.id;
             localStorage.setItem('vc_dataFileId', dataFileId);
             if (res.result.modifiedTime) localStorage.setItem('vc_driveModifiedTime', res.result.modifiedTime);
-            // upload initial empty content
-            uploadFile(JSON.stringify(allData || {}));
-          }).catch(err => console.warn('Drive create error', err));
+            uploadFile(JSON.stringify(allData || {}), true);
+          }).catch(err => {
+            console.warn('Drive create error', err);
+            updateSyncStatus('⚠ Offline mode');
+          });
         }
 
-        // read file metadata then decide whether to download or keep local
         function readFileAndMaybeSync(fileId) {
           if (!accessToken) { renderBookList(); return; }
-          // get metadata first
+          updateSyncStatus('Syncing...');
+          
           gapi.client.drive.files.get({ fileId, fields: 'id, name, modifiedTime' })
             .then(metaRes => {
               const driveModified = metaRes.result.modifiedTime;
               const localDriveModified = localStorage.getItem('vc_driveModifiedTime');
-              // if drive has a newer version than local, download; else keep local and upload
+              
               if (!localDriveModified || new Date(driveModified).getTime() > new Date(localDriveModified).getTime()) {
-                // download drive file (media)
                 readFile(fileId);
               } else {
-                // local newer → upload local to drive to keep single source
                 saveDataFile();
-                renderBookList();
               }
             }).catch(err => {
               console.warn('Drive metadata read error', err);
-              // fallback to reading file
               readFile(fileId);
             });
         }
@@ -321,29 +376,30 @@
         function readFile(fileId) {
           gapi.client.drive.files.get({ fileId, alt: 'media' }).then(res => {
             try {
-              // gapi returns parsed object in res.result
               const remote = res.result || {};
-              // If remote is an object with the same structure, adopt it
-              if (remote && typeof remote === 'object') {
+              if (remote && typeof remote === 'object' && Object.keys(remote).length > 0) {
                 allData = remote;
                 saveToLocalBackup();
-                // update local drive modified time by fetching metadata
                 gapi.client.drive.files.get({ fileId, fields: 'modifiedTime' }).then(m => {
-                  if (m.result && m.result.modifiedTime) localStorage.setItem('vc_driveModifiedTime', m.result.modifiedTime);
+                  if (m.result && m.result.modifiedTime) {
+                    localStorage.setItem('vc_driveModifiedTime', m.result.modifiedTime);
+                  }
+                  updateSyncStatus('✓ Synced');
                 }).catch(()=>{});
               }
             } catch (e) {
               console.warn('Read parse error', e);
+              updateSyncStatus('⚠ Sync error');
             }
             renderBookList();
           }).catch(err => {
             console.warn('Drive read error', err);
+            updateSyncStatus('⚠ Read failed');
             renderBookList();
           });
         }
 
-        // upload JSON content to Drive using uploadType=media (PATCH)
-        async function uploadFile(content) {
+        async function uploadFile(content, isInitial = false) {
           if (!accessToken || !dataFileId) return;
           try {
             const blob = new Blob([content], { type: 'application/json' });
@@ -354,70 +410,71 @@
             });
             if (res.ok) {
               const json = await res.json().catch(()=>null);
-              if (json && json.modifiedTime) localStorage.setItem('vc_driveModifiedTime', json.modifiedTime);
+              if (json && json.modifiedTime) {
+                localStorage.setItem('vc_driveModifiedTime', json.modifiedTime);
+              }
+              if (!isInitial) updateSyncStatus('✓ Synced');
             } else {
-              console.warn('Drive upload non-ok', res.status, await res.text());
+              console.warn('Drive upload non-ok', res.status);
+              updateSyncStatus('⚠ Upload failed');
             }
           } catch (err) {
             console.warn('Drive upload error', err);
+            updateSyncStatus('⚠ Upload error');
           }
         }
 
-        // save data file (local + upload)
         async function saveDataFile() {
-          saveToLocalBackup();
-          await uploadFile(JSON.stringify(allData || {}));
+          if (isSyncing) return;
+          isSyncing = true;
+          try {
+            saveToLocalBackup();
+            await uploadFile(JSON.stringify(allData || {}));
+            lastDriveSync = Date.now();
+          } catch (err) {
+            console.warn('Save data file error', err);
+          } finally {
+            isSyncing = false;
+          }
         }
 
-        // auto-download latest from Drive (used on focus)
         async function autoSyncFromDrive() {
-          if (!accessToken || !dataFileId) return;
+          if (!accessToken || !dataFileId || isSyncing) return;
+          if (Date.now() - lastDriveSync < MIN_SYNC_INTERVAL) return;
+          
           try {
-            // check metadata
             const meta = await gapi.client.drive.files.get({ fileId: dataFileId, fields: 'modifiedTime' });
             const driveModified = meta.result.modifiedTime;
             const localDriveModified = localStorage.getItem('vc_driveModifiedTime');
+            
             if (!localDriveModified || new Date(driveModified).getTime() > new Date(localDriveModified).getTime()) {
               await readFile(dataFileId);
-              console.log('Auto-downloaded latest data from Drive.');
-              // If on details screen, re-render entries with new data
               if (currentBookName) renderEntries();
             } else {
-              // local is newer — push local
               await saveDataFile();
-              console.log('Local data newer — uploaded to Drive.');
             }
           } catch (err) {
-            console.warn('Auto-sync from drive failed', err);
+            console.warn('Auto-sync failed', err);
           }
         }
 
-        // auto-upload after every change (call saveDataFile)
-        async function autoSyncToDriveAfterChange() {
-          if (!accessToken || !dataFileId) return;
-          try {
-            await saveDataFile();
-            console.log('Auto-upload done.');
-          } catch (err) {
-            console.warn('Auto-upload failed', err);
-          }
-        }
-
-        // run sync on window focus so mobile/laptop pick up latest
         window.addEventListener('focus', () => {
           if (accessToken && dataFileId) autoSyncFromDrive();
         });
 
-        // optional periodic sync (conservative interval)
         setInterval(() => {
           if (accessToken && dataFileId) autoSyncFromDrive();
-        }, 30 * 1000); // every 30s for faster sync
+        }, 30 * 1000);
 
         // === UI & entries logic ===
-        function showScreen(s) { homeScreen.style.display = s==='home'?'block':'none'; detailsScreen.style.display = s==='details'?'block':'none'; }
+        function showScreen(s) { 
+          homeScreen.style.display = s==='home'?'block':'none'; 
+          detailsScreen.style.display = s==='details'?'block':'none'; 
+        }
+
         function showDetailsScreen(name) {
           currentBookName = name;
-          bookTitle.textContent = name;
+          bookTitle.textContent = '📖 ' + name;
           const now = new Date();
           dateInput.value = now.toISOString().slice(0,10);
           timeInput.value = now.toTimeString().slice(0,5);
@@ -447,13 +504,12 @@
           return (book && book.entries) ? book.entries : [];
         }
 
-        // Get sorted books by most recent update
         function getSortedBookNames() {
           const names = Object.keys(allData);
           return names.sort((a, b) => {
             const timeA = (allData[a] && allData[a].updatedAt) ? allData[a].updatedAt : 0;
             const timeB = (allData[b] && allData[b].updatedAt) ? allData[b].updatedAt : 0;
-            return timeB - timeA; // Most recent first
+            return timeB - timeA;
           });
         }
 
@@ -464,23 +520,24 @@
           sortedNames.forEach(name => {
             const div = document.createElement('div');
             div.className = 'book-item';
+            
             const span = document.createElement('div');
             span.className = 'book-name';
             span.onclick = () => showDetailsScreen(name);
 
             const title = document.createElement('span');
-            title.textContent = name;
+            title.textContent = '📕 ' + name;
 
             const totals = computeBookTotals(name);
             const badge = document.createElement('span');
-            badge.className = 'balance-badge '+(totals.net>=0?'balance-positive':'balance-negative');
-            badge.textContent = (totals.net>=0?'+ ':'- ')+Math.abs(totals.net).toFixed(2);
+            badge.className = 'balance-badge ' + (totals.net > 0 ? 'balance-positive' : totals.net < 0 ? 'balance-negative' : 'balance-zero');
+            badge.textContent = '₹ ' + Math.abs(totals.net).toFixed(2);
             badge.title = 'Net balance';
 
             span.append(title, badge);
 
             const delBtn = document.createElement('button');
-            delBtn.textContent = 'Delete';
+            delBtn.textContent = '🗑️ Delete';
             delBtn.className = 'book-delete-btn';
             delBtn.onclick = (e) => {
               e.stopPropagation();
@@ -488,19 +545,18 @@
               if (confirmDel === name) {
                 delete allData[name];
                 saveToLocalBackup();
-                autoSyncToDriveAfterChange();
+                saveDataFile();
                 renderBookList();
                 alert(`Book "${name}" deleted.`);
-              } else {
-                alert('Deletion cancelled.');
               }
             };
 
             div.append(span, delBtn);
             bookList.append(div);
           });
+          
           if (Object.keys(allData).length === 0) {
-            bookList.innerHTML = '<div style="margin-top:12px;color:#666;">No cashbooks yet. Create one above to start tracking.</div>';
+            bookList.innerHTML = '<div style="margin-top:12px;color:#999;text-align:center;padding:20px;">📭 No cashbooks yet. Create one to start tracking!</div>';
           }
         }
 
@@ -512,9 +568,9 @@
             newBookNameInput.value = '';
             renderBookList();
             saveToLocalBackup();
-            autoSyncToDriveAfterChange();
+            saveDataFile();
           } else {
-            alert('Book name already exists or is invalid.');
+            alert(allData[n] ? 'Book already exists!' : 'Invalid book name.');
           }
         };
 
@@ -523,11 +579,18 @@
           if (!currentBookName) return alert('Select a book first.');
           if (isNaN(a) || a <= 0) return alert('Enter a valid amount.');
           if (!remarkInput.value.trim()) return alert('Enter remark.');
+          
           const d = dateInput.value || new Date().toISOString().slice(0,10);
           const t = timeInput.value || new Date().toTimeString().slice(0,5);
-          const entry = { id: Date.now()+Math.random(), date:`${d} ${t}`, remark: remarkInput.value.trim(), mode: modeInput.value, amount: a, type };
+          const entry = { 
+            id: Date.now() + Math.random(), 
+            date: `${d} ${t}`, 
+            remark: remarkInput.value.trim(), 
+            mode: modeInput.value, 
+            amount: a, 
+            type 
+          };
           
-          // Ensure book structure
           if (!allData[currentBookName]) {
             allData[currentBookName] = { entries: [], updatedAt: Date.now() };
           }
@@ -537,7 +600,7 @@
           renderEntries();
           renderBookList();
           saveToLocalBackup();
-          autoSyncToDriveAfterChange();
+          saveDataFile();
           amountInput.value = '';
           remarkInput.value = '';
         }
@@ -545,12 +608,10 @@
         cashInButton.onclick = () => addEntry('in');
         cashOutButton.onclick = () => addEntry('out');
 
-        // === FIXED renderEntries with correct running balances ===
         function renderEntries() {
           if (!currentBookName) return;
           const arr = getBookEntries(currentBookName);
 
-          // Sort oldest → newest for balance calculation
           const sortedAsc = arr.slice().sort((a, b) => new Date(a.date) - new Date(b.date));
 
           let run = 0, ti = 0, to = 0;
@@ -562,7 +623,6 @@
             runningBalances[e.id] = run.toFixed(2);
           }
 
-          // Now display latest → oldest
           const sortedDesc = sortedAsc.slice().reverse();
           entryList.innerHTML = '';
 
@@ -585,20 +645,21 @@
             }
 
             const balCell = row.insertCell(5);
-            balCell.textContent = runningBalances[e.id] || '0.00';
-            // style based on numeric value
-            if (parseFloat(runningBalances[e.id] || 0) >= 0) balCell.className = 'balance-positive';
-            else balCell.className = 'balance-negative';
+            const balValue = parseFloat(runningBalances[e.id] || 0);
+            balCell.textContent = (balValue >= 0 ? '+ ' : '- ') + Math.abs(balValue).toFixed(2);
+            balCell.className = balValue > 0 ? 'balance-positive' : balValue < 0 ? 'balance-negative' : 'balance-zero';
 
             const act = row.insertCell(6);
             const eb = document.createElement('button');
-            eb.textContent = 'Edit';
+            eb.textContent = '✏️';
             eb.className = 'small';
+            eb.title = 'Edit';
             eb.onclick = () => openEditModal(e.id);
 
             const db = document.createElement('button');
-            db.textContent = 'X';
+            db.textContent = '❌';
             db.className = 'delete-btn';
+            db.title = 'Delete';
             db.onclick = () => {
               if (confirm('Delete this entry?')) {
                 const idx = getBookEntries(currentBookName).findIndex(x=>x.id===e.id);
@@ -608,7 +669,7 @@
                   renderEntries();
                   renderBookList();
                   saveToLocalBackup();
-                  autoSyncToDriveAfterChange();
+                  saveDataFile();
                 }
               }
             };
@@ -632,31 +693,37 @@
           editRemark.value = e.remark;
           editModal.style.display = 'flex';
         }
+
         cancelEdit.onclick = () => { editingEntryId = null; editModal.style.display = 'none'; };
+        
         saveEdit.onclick = () => {
           if (!editingEntryId) return;
           const a = parseFloat(editAmount.value);
           if (isNaN(a) || a <= 0) return alert('Enter valid amount.');
           if (!editRemark.value.trim()) return alert('Enter remark.');
+          
           const e = getBookEntries(currentBookName).find(x=>x.id===editingEntryId);
           if (!e) return alert('Entry not found');
+          
           e.date = `${editDate.value} ${editTime.value}`;
           e.mode = editMode.value;
           e.amount = a;
           e.remark = editRemark.value.trim();
           allData[currentBookName].updatedAt = Date.now();
+          
           editingEntryId = null;
           editModal.style.display = 'none';
           renderEntries();
           renderBookList();
           saveToLocalBackup();
-          autoSyncToDriveAfterChange();
+          saveDataFile();
         };
 
         // Export PDF logic
         exportPdfButton.onclick = () => {
           const arr = getBookEntries(currentBookName);
           if (!arr.length) return alert('No entries to export!');
+          
           const sorted = arr.slice().sort((a,b) => new Date(a.date) - new Date(b.date));
           let run=0, ti=0, to=0;
           const rows = sorted.map(e => {
@@ -671,40 +738,52 @@
               balance: run.toFixed(2)
             };
           });
+          
           const body = rows.slice().reverse().map(r => [r.date,r.remark,r.mode,r.cashIn,r.cashOut,r.balance]);
           const { jsPDF } = window.jspdf;
           const doc = new jsPDF('p','mm','a4');
           doc.setFont('helvetica');
           const pageWidth = doc.internal.pageSize.getWidth();
           const margin = 10;
-          doc.setFillColor(0,38,77); doc.rect(0,0,pageWidth,12,'F');
-          doc.setTextColor(255,255,255); doc.setFontSize(16);
-          doc.text("VishClick : Design Studio", pageWidth/2, 8, { align: 'center' });
-          doc.setFillColor(230,230,250); doc.rect(0,12,pageWidth,10,'F');
-          doc.setTextColor(0); doc.setFontSize(12); doc.setFont(undefined,'bold');
-          doc.text(`Book: ${currentBookName}`, pageWidth/2, 19, { align: 'center' });
-          const totalWidth=60, gap=5, totalsY=30, totalStartX=20;
+          
+          doc.setFillColor(0,38,77); doc.rect(0,0,pageWidth,14,'F');
+          doc.setTextColor(255,255,255); doc.setFontSize(18);
+          doc.text("📊 VishClick : Design Studio", pageWidth/2, 9, { align: 'center' });
+          
+          doc.setFillColor(230,230,250); doc.rect(0,14,pageWidth,10,'F');
+          doc.setTextColor(0); doc.setFontSize(13); doc.setFont(undefined,'bold');
+          doc.text(`Book: ${currentBookName}`, pageWidth/2, 21, { align: 'center' });
+          
+          const totalWidth=50, gap=4, totalsY=28, totalStartX=20;
           doc.setFontSize(9); doc.setFont(undefined,'bold');
-          doc.setFillColor(220,255,220); doc.rect(totalStartX, totalsY, totalWidth,8,'F');
-          doc.setTextColor(0,128,0); doc.text(`Total In: ${ti.toFixed(2)}`, totalStartX+3, totalsY+6);
-          doc.setFillColor(255,220,220); doc.rect(totalStartX+totalWidth+gap, totalsY, totalWidth,8,'F');
-          doc.setTextColor(220,0,0); doc.text(`Total Out: ${to.toFixed(2)}`, totalStartX+totalWidth+gap+3, totalsY+6);
-          doc.setFillColor(220,220,255); doc.rect(totalStartX+(totalWidth+gap)*2, totalsY, totalWidth,8,'F');
-          doc.setTextColor(75,0,130); doc.text(`Net Balance: ${(ti-to).toFixed(2)}`, totalStartX+(totalWidth+gap)*2+3, totalsY+6);
+          
+          doc.setFillColor(220,255,220); doc.rect(totalStartX, totalsY, totalWidth,7,'F');
+          doc.setTextColor(0,128,0); doc.text(`Total In: ₹${ti.toFixed(2)}`, totalStartX+2, totalsY+5);
+          
+          doc.setFillColor(255,220,220); doc.rect(totalStartX+totalWidth+gap, totalsY, totalWidth,7,'F');
+          doc.setTextColor(220,0,0); doc.text(`Total Out: ₹${to.toFixed(2)}`, totalStartX+totalWidth+gap+2, totalsY+5);
+          
+          doc.setFillColor(220,220,255); doc.rect(totalStartX+(totalWidth+gap)*2, totalsY, totalWidth,7,'F');
+          doc.setTextColor(75,0,130); doc.text(`Net: ₹${(ti-to).toFixed(2)}`, totalStartX+(totalWidth+gap)*2+2, totalsY+5);
+          
           doc.autoTable({
             head:[['Date','Remark','Mode','Cash In','Cash Out','Balance']],
             body: body,
-            startY: totalsY+14,
+            startY: totalsY+12,
             margin:{left: margin, right: margin},
-            styles:{fontSize:9,cellPadding:2.5},
+            styles:{fontSize:8,cellPadding:2},
             headStyles:{fillColor:[41,128,185], textColor:255, halign:'center'},
-            columnStyles:{0:{cellWidth:35},1:{cellWidth:'auto'},2:{cellWidth:20, halign:'center'},
-              3:{cellWidth:22,halign:'right',textColor:[0,128,0]},
-              4:{cellWidth:22,halign:'right',textColor:[220,0,0]},
-              5:{cellWidth:22,halign:'right'}
+            columnStyles:{
+              0:{cellWidth:32},
+              1:{cellWidth:'auto'},
+              2:{cellWidth:18, halign:'center'},
+              3:{cellWidth:20,halign:'right',textColor:[0,128,0]},
+              4:{cellWidth:20,halign:'right',textColor:[220,0,0]},
+              5:{cellWidth:20,halign:'right'}
             },
             theme:'grid'
           });
+          
           doc.save(`${currentBookName}-report.pdf`);
         };
     </script>
