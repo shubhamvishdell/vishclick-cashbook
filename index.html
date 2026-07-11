@@ -377,16 +377,22 @@
           gapi.client.drive.files.get({ fileId, alt: 'media' }).then(res => {
             try {
               const remote = res.result || {};
+              // FIX: Only replace if remote has data, otherwise keep local
               if (remote && typeof remote === 'object' && Object.keys(remote).length > 0) {
                 allData = remote;
                 saveToLocalBackup();
-                gapi.client.drive.files.get({ fileId, fields: 'modifiedTime' }).then(m => {
-                  if (m.result && m.result.modifiedTime) {
-                    localStorage.setItem('vc_driveModifiedTime', m.result.modifiedTime);
-                  }
-                  updateSyncStatus('✓ Synced');
-                }).catch(()=>{});
+              } else {
+                // Drive file is empty, keep local data and upload it
+                console.log('Drive file empty, keeping local data');
+                uploadFile(JSON.stringify(allData || {}), true);
               }
+              
+              gapi.client.drive.files.get({ fileId, fields: 'modifiedTime' }).then(m => {
+                if (m.result && m.result.modifiedTime) {
+                  localStorage.setItem('vc_driveModifiedTime', m.result.modifiedTime);
+                }
+                updateSyncStatus('✓ Synced');
+              }).catch(()=>{});
             } catch (e) {
               console.warn('Read parse error', e);
               updateSyncStatus('⚠ Sync error');
