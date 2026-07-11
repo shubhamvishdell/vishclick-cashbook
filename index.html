@@ -303,7 +303,7 @@
               const driveModified = metaRes.result.modifiedTime;
               const localDriveModified = localStorage.getItem('vc_driveModifiedTime');
               // if drive has a newer version than local, download; else keep local and upload
-              if (!localDriveModified || new Date(driveModified).getTime() > new Date(localDriveModified).getTime()) {
+              if (!localDriveModified || new Date(driveModified) > new Date(localDriveModified)) {
                 // download drive file (media)
                 readFile(fileId);
               } else {
@@ -377,11 +377,9 @@
             const meta = await gapi.client.drive.files.get({ fileId: dataFileId, fields: 'modifiedTime' });
             const driveModified = meta.result.modifiedTime;
             const localDriveModified = localStorage.getItem('vc_driveModifiedTime');
-            if (!localDriveModified || new Date(driveModified).getTime() > new Date(localDriveModified).getTime()) {
+            if (!localDriveModified || new Date(driveModified) > new Date(localDriveModified)) {
               await readFile(dataFileId);
               console.log('Auto-downloaded latest data from Drive.');
-              // If on details screen, re-render entries with new data
-              if (currentBookName) renderEntries();
             } else {
               // local is newer — push local
               await saveDataFile();
@@ -411,7 +409,7 @@
         // optional periodic sync (conservative interval)
         setInterval(() => {
           if (accessToken && dataFileId) autoSyncFromDrive();
-        }, 30 * 1000); // every 30s for faster sync
+        }, 60 * 1000); // every 60s
 
         // === UI & entries logic ===
         function showScreen(s) { homeScreen.style.display = s==='home'?'block':'none'; detailsScreen.style.display = s==='details'?'block':'none'; }
@@ -432,8 +430,7 @@
         };
 
         function computeBookTotals(name) {
-          const book = allData[name];
-          const arr = (book && book.entries) ? book.entries : [];
+          const arr = allData[name] || [];
           let ti = 0, to = 0;
           arr.forEach(e => {
             if (e.type === 'in') ti += +e.amount;
@@ -442,26 +439,9 @@
           return { totalIn: ti, totalOut: to, net: ti - to };
         }
 
-        function getBookEntries(name) {
-          const book = allData[name];
-          return (book && book.entries) ? book.entries : [];
-        }
-
-        // Get sorted books by most recent update
-        function getSortedBookNames() {
-          const names = Object.keys(allData);
-          return names.sort((a, b) => {
-            const timeA = (allData[a] && allData[a].updatedAt) ? allData[a].updatedAt : 0;
-            const timeB = (allData[b] && allData[b].updatedAt) ? allData[b].updatedAt : 0;
-            return timeB - timeA; // Most recent first
-          });
-        }
-
         function renderBookList() {
           bookList.innerHTML = '';
-          const sortedNames = getSortedBookNames();
-          
-          sortedNames.forEach(name => {
+          Object.keys(allData).forEach(name => {
             const div = document.createElement('div');
             div.className = 'book-item';
             const span = document.createElement('div');
@@ -499,19 +479,22 @@
             div.append(span, delBtn);
             bookList.append(div);
           });
+          if (Object.keys(allData).length === 0) {
+            bookList.innerHTML = '<div style="margin-top:12px;color:#666;">No cashbooks yet. Create one above to start tracking.</div>';
+          }
         }
 
         addBookForm.onsubmit = e => {
           e.preventDefault();
           const n = newBookNameInput.value.trim();
           if (n && !allData[n]) {
-            allData[n] = { entries: [], updatedAt: Date.now() };
+            allData[n] = [];
             newBookNameInput.value = '';
             renderBookList();
             saveToLocalBackup();
             autoSyncToDriveAfterChange();
           } else {
-            alert(allData[n] ? 'Book already exists!' : 'Invalid book name.');
+            alert('Book name already exists or is invalid.');
           }
         };
 
@@ -520,26 +503,11 @@
           if (!currentBookName) return alert('Select a book first.');
           if (isNaN(a) || a <= 0) return alert('Enter a valid amount.');
           if (!remarkInput.value.trim()) return alert('Enter remark.');
-          
           const d = dateInput.value || new Date().toISOString().slice(0,10);
           const t = timeInput.value || new Date().toTimeString().slice(0,5);
-          const entry = { 
-            id: Date.now() + Math.random(), 
-            date: `${d} ${t}`, 
-            remark: remarkInput.value.trim(), 
-            mode: modeInput.value, 
-            amount: a, 
-            type 
-          };
-          
-          if (!allData[currentBookName]) {
-            allData[currentBookName] = { entries: [], updatedAt: Date.now() };
-          }
-          allData[currentBookName].entries.push(entry);
-          allData[currentBookName].updatedAt = Date.now();
-          
+          const entry = { id: Date.now()+Math.random(), date:`${d} ${t}`, remark: remarkInput.value.trim(), mode: modeInput.value, amount: a, type };
+          allData[currentBookName].push(entry);
           renderEntries();
-          renderBookList();
           saveToLocalBackup();
           autoSyncToDriveAfterChange();
           amountInput.value = '';
@@ -549,10 +517,12 @@
         cashInButton.onclick = () => addEntry('in');
         cashOutButton.onclick = () => addEntry('out');
 
+        // === FIXED renderEntries with correct running balances ===
         function renderEntries() {
           if (!currentBookName) return;
-          const arr = getBookEntries(currentBookName);
+          const arr = allData[currentBookName] || [];
 
+          // Sort oldest → newest for balance calculation
           const sortedAsc = arr.slice().sort((a, b) => new Date(a.date) - new Date(b.date));
 
           let run = 0, ti = 0, to = 0;
@@ -564,6 +534,7 @@
             runningBalances[e.id] = run.toFixed(2);
           }
 
+          // Now display latest → oldest
           const sortedDesc = sortedAsc.slice().reverse();
           entryList.innerHTML = '';
 
@@ -586,9 +557,10 @@
             }
 
             const balCell = row.insertCell(5);
-            const balValue = parseFloat(runningBalances[e.id] || 0);
-            balCell.textContent = (balValue >= 0 ? '+ ' : '- ') + Math.abs(balValue).toFixed(2);
-            balCell.className = balValue > 0 ? 'balance-positive' : 'balance-negative';
+            balCell.textContent = runningBalances[e.id] || '0.00';
+            // style based on numeric value
+            if (parseFloat(runningBalances[e.id] || 0) >= 0) balCell.className = 'balance-positive';
+            else balCell.className = 'balance-negative';
 
             const act = row.insertCell(6);
             const eb = document.createElement('button');
@@ -601,28 +573,26 @@
             db.className = 'delete-btn';
             db.onclick = () => {
               if (confirm('Delete this entry?')) {
-                const idx = getBookEntries(currentBookName).findIndex(x=>x.id===e.id);
+                const idx = allData[currentBookName].findIndex(x=>x.id===e.id);
                 if (idx > -1) {
-                  allData[currentBookName].entries.splice(idx,1);
-                  allData[currentBookName].updatedAt = Date.now();
+                  allData[currentBookName].splice(idx,1);
                   renderEntries();
-                  renderBookList();
                   saveToLocalBackup();
                   autoSyncToDriveAfterChange();
                 }
               }
             };
-            act.append(eb, ' ');
-            act.append(db);
+            act.append(eb, db);
           }
 
           totalInDisplay.textContent = ti.toFixed(2);
           totalOutDisplay.textContent = to.toFixed(2);
           netBalanceDisplay.textContent = (ti - to).toFixed(2);
+          renderBookList();
         }
 
         function openEditModal(id) {
-          const e = getBookEntries(currentBookName).find(x=>x.id===id);
+          const e = (allData[currentBookName]||[]).find(x=>x.id===id);
           if (!e) return alert('Entry not found');
           editingEntryId = id;
           const parts = e.date.split(' ');
@@ -633,37 +603,29 @@
           editRemark.value = e.remark;
           editModal.style.display = 'flex';
         }
-
         cancelEdit.onclick = () => { editingEntryId = null; editModal.style.display = 'none'; };
-        
         saveEdit.onclick = () => {
           if (!editingEntryId) return;
           const a = parseFloat(editAmount.value);
           if (isNaN(a) || a <= 0) return alert('Enter valid amount.');
           if (!editRemark.value.trim()) return alert('Enter remark.');
-          
-          const e = getBookEntries(currentBookName).find(x=>x.id===editingEntryId);
+          const e = (allData[currentBookName]||[]).find(x=>x.id===editingEntryId);
           if (!e) return alert('Entry not found');
-          
           e.date = `${editDate.value} ${editTime.value}`;
           e.mode = editMode.value;
           e.amount = a;
           e.remark = editRemark.value.trim();
-          allData[currentBookName].updatedAt = Date.now();
-          
           editingEntryId = null;
           editModal.style.display = 'none';
           renderEntries();
-          renderBookList();
           saveToLocalBackup();
           autoSyncToDriveAfterChange();
         };
 
         // Export PDF logic
         exportPdfButton.onclick = () => {
-          const arr = getBookEntries(currentBookName);
+          const arr = allData[currentBookName] || [];
           if (!arr.length) return alert('No entries to export!');
-          
           const sorted = arr.slice().sort((a,b) => new Date(a.date) - new Date(b.date));
           let run=0, ti=0, to=0;
           const rows = sorted.map(e => {
@@ -678,38 +640,40 @@
               balance: run.toFixed(2)
             };
           });
-          
           const body = rows.slice().reverse().map(r => [r.date,r.remark,r.mode,r.cashIn,r.cashOut,r.balance]);
           const { jsPDF } = window.jspdf;
           const doc = new jsPDF('p','mm','a4');
           doc.setFont('helvetica');
-          doc.setFillColor(25,25,112); doc.rect(0,0,210,15,'F');
-          doc.setTextColor(255,255,255); doc.setFontSize(20); 
-          doc.text('VishClick : Design Studio', 105, 10, { align: 'center' });
-          
-          doc.setFontSize(14); doc.setFont(undefined,'bold'); doc.setTextColor(0,0,0);
-          doc.text(`Book: ${currentBookName}`, 105, 24, { align: 'center' });
-          
+          const pageWidth = doc.internal.pageSize.getWidth();
+          const margin = 10;
+          doc.setFillColor(0,38,77); doc.rect(0,0,pageWidth,12,'F');
+          doc.setTextColor(255,255,255); doc.setFontSize(16);
+          doc.text("VishClick : Design Studio", pageWidth/2, 8, { align: 'center' });
+          doc.setFillColor(230,230,250); doc.rect(0,12,pageWidth,10,'F');
+          doc.setTextColor(0); doc.setFontSize(12); doc.setFont(undefined,'bold');
+          doc.text(`Book: ${currentBookName}`, pageWidth/2, 19, { align: 'center' });
+          const totalWidth=60, gap=5, totalsY=30, totalStartX=20;
           doc.setFontSize(9); doc.setFont(undefined,'bold');
-          doc.setTextColor(40,167,69); doc.text(`Total In: ₹${ti.toFixed(2)}`, 15, 32);
-          doc.setTextColor(220,53,69); doc.text(`Total Out: ₹${to.toFixed(2)}`, 75, 32);
-          doc.setTextColor(0,0,128); doc.text(`Net Balance: ₹${(ti-to).toFixed(2)}`, 135, 32);
-          
+          doc.setFillColor(220,255,220); doc.rect(totalStartX, totalsY, totalWidth,8,'F');
+          doc.setTextColor(0,128,0); doc.text(`Total In: ${ti.toFixed(2)}`, totalStartX+3, totalsY+6);
+          doc.setFillColor(255,220,220); doc.rect(totalStartX+totalWidth+gap, totalsY, totalWidth,8,'F');
+          doc.setTextColor(220,0,0); doc.text(`Total Out: ${to.toFixed(2)}`, totalStartX+totalWidth+gap+3, totalsY+6);
+          doc.setFillColor(220,220,255); doc.rect(totalStartX+(totalWidth+gap)*2, totalsY, totalWidth,8,'F');
+          doc.setTextColor(75,0,130); doc.text(`Net Balance: ${(ti-to).toFixed(2)}`, totalStartX+(totalWidth+gap)*2+3, totalsY+6);
           doc.autoTable({
             head:[['Date','Remark','Mode','Cash In','Cash Out','Balance']],
             body: body,
-            startY: 40,
-            margin:{left: 10, right: 10},
-            styles:{fontSize:8,cellPadding:2},
+            startY: totalsY+14,
+            margin:{left: margin, right: margin},
+            styles:{fontSize:9,cellPadding:2.5},
             headStyles:{fillColor:[41,128,185], textColor:255, halign:'center'},
-            columnStyles:{
-              3:{textColor:[40,167,69]},
-              4:{textColor:[220,53,69]},
-              5:{halign:'right'}
+            columnStyles:{0:{cellWidth:35},1:{cellWidth:'auto'},2:{cellWidth:20, halign:'center'},
+              3:{cellWidth:22,halign:'right',textColor:[0,128,0]},
+              4:{cellWidth:22,halign:'right',textColor:[220,0,0]},
+              5:{cellWidth:22,halign:'right'}
             },
             theme:'grid'
           });
-          
           doc.save(`${currentBookName}-report.pdf`);
         };
     </script>
