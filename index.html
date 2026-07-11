@@ -120,7 +120,7 @@
 
         // === STATE ===
         let tokenClient, accessToken = null;
-        let allData = {}; // { bookName: [entries...] }
+        let allData = {}; // { bookName: { entries: [...], updatedAt: timestamp } }
         let dataFileId = null;
         let currentBookName = null;
         let editingEntryId = null;
@@ -303,7 +303,7 @@
               const driveModified = metaRes.result.modifiedTime;
               const localDriveModified = localStorage.getItem('vc_driveModifiedTime');
               // if drive has a newer version than local, download; else keep local and upload
-              if (!localDriveModified || new Date(driveModified) > new Date(localDriveModified)) {
+              if (!localDriveModified || new Date(driveModified).getTime() > new Date(localDriveModified).getTime()) {
                 // download drive file (media)
                 readFile(fileId);
               } else {
@@ -377,9 +377,11 @@
             const meta = await gapi.client.drive.files.get({ fileId: dataFileId, fields: 'modifiedTime' });
             const driveModified = meta.result.modifiedTime;
             const localDriveModified = localStorage.getItem('vc_driveModifiedTime');
-            if (!localDriveModified || new Date(driveModified) > new Date(localDriveModified)) {
+            if (!localDriveModified || new Date(driveModified).getTime() > new Date(localDriveModified).getTime()) {
               await readFile(dataFileId);
               console.log('Auto-downloaded latest data from Drive.');
+              // If on details screen, re-render entries with new data
+              if (currentBookName) renderEntries();
             } else {
               // local is newer — push local
               await saveDataFile();
@@ -409,7 +411,7 @@
         // optional periodic sync (conservative interval)
         setInterval(() => {
           if (accessToken && dataFileId) autoSyncFromDrive();
-        }, 60 * 1000); // every 60s
+        }, 30 * 1000); // every 30s for faster sync
 
         // === UI & entries logic ===
         function showScreen(s) { homeScreen.style.display = s==='home'?'block':'none'; detailsScreen.style.display = s==='details'?'block':'none'; }
@@ -430,7 +432,8 @@
         };
 
         function computeBookTotals(name) {
-          const arr = allData[name] || [];
+          const book = allData[name];
+          const arr = (book && book.entries) ? book.entries : [];
           let ti = 0, to = 0;
           arr.forEach(e => {
             if (e.type === 'in') ti += +e.amount;
@@ -439,9 +442,26 @@
           return { totalIn: ti, totalOut: to, net: ti - to };
         }
 
+        function getBookEntries(name) {
+          const book = allData[name];
+          return (book && book.entries) ? book.entries : [];
+        }
+
+        // Get sorted books by most recent update
+        function getSortedBookNames() {
+          const names = Object.keys(allData);
+          return names.sort((a, b) => {
+            const timeA = (allData[a] && allData[a].updatedAt) ? allData[a].updatedAt : 0;
+            const timeB = (allData[b] && allData[b].updatedAt) ? allData[b].updatedAt : 0;
+            return timeB - timeA; // Most recent first
+          });
+        }
+
         function renderBookList() {
           bookList.innerHTML = '';
-          Object.keys(allData).forEach(name => {
+          const sortedNames = getSortedBookNames();
+          
+          sortedNames.forEach(name => {
             const div = document.createElement('div');
             div.className = 'book-item';
             const span = document.createElement('div');
@@ -488,7 +508,7 @@
           e.preventDefault();
           const n = newBookNameInput.value.trim();
           if (n && !allData[n]) {
-            allData[n] = [];
+            allData[n] = { entries: [], updatedAt: Date.now() };
             newBookNameInput.value = '';
             renderBookList();
             saveToLocalBackup();
@@ -506,8 +526,16 @@
           const d = dateInput.value || new Date().toISOString().slice(0,10);
           const t = timeInput.value || new Date().toTimeString().slice(0,5);
           const entry = { id: Date.now()+Math.random(), date:`${d} ${t}`, remark: remarkInput.value.trim(), mode: modeInput.value, amount: a, type };
-          allData[currentBookName].push(entry);
+          
+          // Ensure book structure
+          if (!allData[currentBookName]) {
+            allData[currentBookName] = { entries: [], updatedAt: Date.now() };
+          }
+          allData[currentBookName].entries.push(entry);
+          allData[currentBookName].updatedAt = Date.now();
+          
           renderEntries();
+          renderBookList();
           saveToLocalBackup();
           autoSyncToDriveAfterChange();
           amountInput.value = '';
@@ -520,7 +548,7 @@
         // === FIXED renderEntries with correct running balances ===
         function renderEntries() {
           if (!currentBookName) return;
-          const arr = allData[currentBookName] || [];
+          const arr = getBookEntries(currentBookName);
 
           // Sort oldest → newest for balance calculation
           const sortedAsc = arr.slice().sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -573,10 +601,12 @@
             db.className = 'delete-btn';
             db.onclick = () => {
               if (confirm('Delete this entry?')) {
-                const idx = allData[currentBookName].findIndex(x=>x.id===e.id);
+                const idx = getBookEntries(currentBookName).findIndex(x=>x.id===e.id);
                 if (idx > -1) {
-                  allData[currentBookName].splice(idx,1);
+                  allData[currentBookName].entries.splice(idx,1);
+                  allData[currentBookName].updatedAt = Date.now();
                   renderEntries();
+                  renderBookList();
                   saveToLocalBackup();
                   autoSyncToDriveAfterChange();
                 }
@@ -588,11 +618,10 @@
           totalInDisplay.textContent = ti.toFixed(2);
           totalOutDisplay.textContent = to.toFixed(2);
           netBalanceDisplay.textContent = (ti - to).toFixed(2);
-          renderBookList();
         }
 
         function openEditModal(id) {
-          const e = (allData[currentBookName]||[]).find(x=>x.id===id);
+          const e = getBookEntries(currentBookName).find(x=>x.id===id);
           if (!e) return alert('Entry not found');
           editingEntryId = id;
           const parts = e.date.split(' ');
@@ -609,22 +638,24 @@
           const a = parseFloat(editAmount.value);
           if (isNaN(a) || a <= 0) return alert('Enter valid amount.');
           if (!editRemark.value.trim()) return alert('Enter remark.');
-          const e = (allData[currentBookName]||[]).find(x=>x.id===editingEntryId);
+          const e = getBookEntries(currentBookName).find(x=>x.id===editingEntryId);
           if (!e) return alert('Entry not found');
           e.date = `${editDate.value} ${editTime.value}`;
           e.mode = editMode.value;
           e.amount = a;
           e.remark = editRemark.value.trim();
+          allData[currentBookName].updatedAt = Date.now();
           editingEntryId = null;
           editModal.style.display = 'none';
           renderEntries();
+          renderBookList();
           saveToLocalBackup();
           autoSyncToDriveAfterChange();
         };
 
         // Export PDF logic
         exportPdfButton.onclick = () => {
-          const arr = allData[currentBookName] || [];
+          const arr = getBookEntries(currentBookName);
           if (!arr.length) return alert('No entries to export!');
           const sorted = arr.slice().sort((a,b) => new Date(a.date) - new Date(b.date));
           let run=0, ti=0, to=0;
